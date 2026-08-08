@@ -1603,17 +1603,34 @@ static void LayoutSwitcherWindow(HWND hWnd) {
 
     const int listY = metrics.panelPadding + searchBlock;
     const int listHeight = visibleRows * metrics.rowHeight;
+    const UINT dpi = g_SwitcherRenderer->Theme().dpi;
+    int listWindowWidth = contentWidth;
+    int listWindowHeight = listHeight;
+    HRGN visibleRegion = CreateRectRgn(0, 0, contentWidth, listHeight);
+    if (visibleRegion) {
+        if (SetWindowRgn(g_hListView, visibleRegion, FALSE)) {
+            constexpr int scrollbarGuard = 2;
+            listWindowWidth += GetSystemMetricsForDpi(SM_CXVSCROLL, dpi) + scrollbarGuard;
+            listWindowHeight += GetSystemMetricsForDpi(SM_CYHSCROLL, dpi) + scrollbarGuard;
+        } else {
+            DeleteObject(visibleRegion);
+            AT_LOG_ERROR("SetWindowRgn failed; falling back to hidden native scrollbars");
+            ShowScrollBar(g_hListView, SB_BOTH, FALSE);
+        }
+    } else {
+        AT_LOG_ERROR("CreateRectRgn failed; falling back to hidden native scrollbars");
+        ShowScrollBar(g_hListView, SB_BOTH, FALSE);
+    }
     SetWindowPos(
         g_hListView,
         nullptr,
         metrics.panelPadding,
         listY,
-        contentWidth,
-        listHeight,
+        listWindowWidth,
+        listWindowHeight,
         SWP_NOZORDER | (listHeight > 0 ? SWP_SHOWWINDOW : SWP_HIDEWINDOW));
-    const int scrollBarWidth =
-        itemCount > visibleRows ? GetSystemMetricsForDpi(SM_CXVSCROLL, g_SwitcherRenderer->Theme().dpi) : 0;
-    ListView_SetColumnWidth(g_hListView, 0, (std::max)(1, contentWidth - scrollBarWidth - 1));
+    ListView_SetColumnWidth(g_hListView, 0, (std::max)(1, contentWidth - 1));
+    InvalidateRect(g_hListView, nullptr, FALSE);
 }
 
 static void RebuildSwitcherVisuals(HWND hWnd, UINT dpi) {
@@ -2073,25 +2090,29 @@ void DestroyAltTabWindow(const bool activate) {
     // Kill timer
     KillTimer(g_hMainWnd, TIMER_CHECK_ALT_KEYUP);
 
+    HWND targetWindow = nullptr;
+    if (activate) {
+        const int selectedInd = ATWListViewGetSelectedItem();
+        if (selectedInd >= 0 && selectedInd < static_cast<int>(g_AltTabWindows.size())) {
+            targetWindow = g_AltTabWindows[selectedInd].hWnd;
+            AT_LOG_INFO("Selected target = [%p], title = [%s]", targetWindow, GetWindowTitleExA(targetWindow).c_str());
+        }
+    }
+
+    bool targetActivated = false;
+    if (targetWindow && IsWindow(targetWindow) && !IsHungAppWindowEx(targetWindow))
+        targetActivated = ActivateWindow(targetWindow);
+
+    DestroyWindow(g_hAltTabWnd);
+
     if (g_idThreadAttachTo) {
         AttachThreadInput(GetCurrentThreadId(), g_idThreadAttachTo, FALSE);
         g_idThreadAttachTo = 0;
     }
 
-    if (activate) {
-        int selectedInd = ATWListViewGetSelectedItem();
-        HWND hWnd = nullptr;
-        if (selectedInd != -1) {
-            hWnd = g_AltTabWindows[selectedInd].hWnd;
-            AT_LOG_INFO("hWnd = [%#x], title = [%s]", hWnd, GetWindowTitleExA(hWnd).c_str());
-        }
-        DestroyWindow(g_hAltTabWnd);
-        if (hWnd && !IsHungAppWindowEx(hWnd)) {
-            ActivateWindow(hWnd);
-        }
-    } else {
-        DestroyWindow(g_hAltTabWnd);
-    }
+    if (activate && targetWindow && !targetActivated)
+        AT_LOG_ERROR(
+            "Failed to activate selected target [%p]; foreground is [%p]", targetWindow, GetForegroundWindow());
 
     // CleanUp
     g_hAltTabWnd = nullptr;
@@ -2112,62 +2133,57 @@ void DestroyAltTabWindow(const bool activate) {
 // ----------------------------------------------------------------------------
 // Activate window of the given window handle
 // ----------------------------------------------------------------------------
-void ActivateWindow(HWND hTargetWnd) {
+bool ActivateWindow(HWND hTargetWnd) {
     AT_LOG_TRACE;
 
-    HWND hForegroundWnd = GetForegroundWindow();
-    if (hTargetWnd == hForegroundWnd) {
-        return;
-    }
+    if (!IsWindow(hTargetWnd))
+        return false;
 
-    // Bring the window to the foreground
-    // Determines whether the specified window is minimized (iconic).
+    const auto isTargetForeground = [hTargetWnd]() {
+        const HWND foreground = GetForegroundWindow();
+        if (!foreground)
+            return false;
+        if (foreground == hTargetWnd)
+            return true;
+        const HWND foregroundRoot = GetAncestor(foreground, GA_ROOTOWNER);
+        const HWND targetRoot = GetAncestor(hTargetWnd, GA_ROOTOWNER);
+        return foregroundRoot && targetRoot && foregroundRoot == targetRoot;
+    };
+
     if (IsIconic(hTargetWnd)) {
-        // ShowWindow(hWnd, SW_RESTORE);
-        PostMessage(hTargetWnd, WM_SYSCOMMAND, SC_RESTORE, 0);
-    } else {
-        BOOL result = SetForegroundWindow(hTargetWnd);
-        if (!result && hForegroundWnd != hTargetWnd) {
-            // Failed to bring an elevated window to the top from a non-elevated process.
-            AT_LOG_ERROR("SetForegroundWindow(hWnd) failed!");
-
-            ShowWindow(hTargetWnd, SW_SHOW);
-            result = BringWindowToTop(hTargetWnd);
-            HWND hFGWnd = GetForegroundWindow();
-            if (!result && hFGWnd != hTargetWnd) {
-                AT_LOG_ERROR("BringWindowToTop(hWnd) failed!");
-            } else {
-                SetActiveWindow(hTargetWnd);
-                AT_LOG_INFO("BringWindowToTop(hWnd) succeeded!");
-                // return;
-            }
-
-            // It seems it is always better to use AttachThreadInput than
-            // SetForegroundWindow even the BringWindowToTop succeeded. So not
-            // going to comment the below piece of code.
-            DWORD idForeground = GetWindowThreadProcessId(hForegroundWnd, nullptr);
-            DWORD idTarget = GetWindowThreadProcessId(hTargetWnd, nullptr);
-
-            if (hFGWnd && !IsHungAppWindowEx(hFGWnd))
-                AttachThreadInput(idForeground, idTarget, TRUE);
-
-            if (!SetForegroundWindow(hTargetWnd)) {
-                INPUT inp[4];
-                ZeroMemory(&inp, sizeof(inp));
-                inp[0].type = inp[1].type = inp[2].type = inp[3].type = INPUT_KEYBOARD;
-                inp[0].ki.wVk = inp[1].ki.wVk = inp[2].ki.wVk = inp[3].ki.wVk = VK_MENU;
-                inp[0].ki.dwFlags = inp[2].ki.dwFlags = KEYEVENTF_EXTENDEDKEY;
-                inp[1].ki.dwFlags = inp[3].ki.dwFlags = KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP;
-                SendInput(4, inp, sizeof(INPUT));
-
-                SetForegroundWindow(hTargetWnd);
-            }
-
-            if (hFGWnd && !IsHungAppWindowEx(hFGWnd))
-                AttachThreadInput(idForeground, idTarget, FALSE);
-        }
+        [[maybe_unused]] const BOOL restoreResult = ShowWindow(hTargetWnd, SW_RESTORE);
+        AT_LOG_INFO("Restore target [%p]: result = %d", hTargetWnd, restoreResult);
     }
-    SetActiveWindow(hTargetWnd);
+
+    [[maybe_unused]] const BOOL foregroundResult = SetForegroundWindow(hTargetWnd);
+    bool activated = isTargetForeground();
+    AT_LOG_INFO(
+        "SetForegroundWindow target [%p]: result = %d, foreground = [%p]",
+        hTargetWnd,
+        foregroundResult,
+        GetForegroundWindow());
+
+    if (!activated) {
+        const DWORD currentThread = GetCurrentThreadId();
+        const DWORD targetThread = GetWindowThreadProcessId(hTargetWnd, nullptr);
+        const BOOL attached = targetThread && targetThread != currentThread
+                                  ? AttachThreadInput(currentThread, targetThread, TRUE)
+                                  : FALSE;
+        [[maybe_unused]] const BOOL retryResult = SetForegroundWindow(hTargetWnd);
+        activated = isTargetForeground();
+        AT_LOG_INFO(
+            "Foreground retry target [%p]: attached = %d, result = %d, foreground = [%p]",
+            hTargetWnd,
+            attached,
+            retryResult,
+            GetForegroundWindow());
+        if (attached)
+            AttachThreadInput(currentThread, targetThread, FALSE);
+    }
+
+    AT_LOG_INFO(
+        "Activation target [%p]: success = %d, final foreground = [%p]", hTargetWnd, activated, GetForegroundWindow());
+    return activated;
 }
 
 BOOL IsHungAppWindowEx(HWND hwnd) {

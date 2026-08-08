@@ -44,6 +44,8 @@ Known Issues
   and the GDI+/Msimg32 link dependencies.
 - Fixed switcher fonts, brushes, image lists, and subclasses surviving repeated
   switcher openings.
+- Hid native ListView scrollbars while preserving wheel and keyboard scrolling.
+- Fixed foreground handoff when selecting normal or minimized windows.
 
 
 2026.1.0.0 new features and bug fixes

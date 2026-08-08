@@ -126,7 +126,7 @@ INT_PTR CALLBACK ATAboutDlgProc(HWND, UINT, WPARAM, LPARAM);
 
 void DestroyAltTabWindow(const bool activate = false);
 
-void ActivateWindow(HWND hWnd);
+bool ActivateWindow(HWND hWnd);
 
 BOOL IsHungAppWindowEx(HWND hwnd);
 
