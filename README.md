@@ -1,7 +1,8 @@
 ![GitHub Downloads][gh-downloads]
 
 # AltTab
-AltTab is a small application created in C++, Win32, is an alternative for windows native task switcher (Alt+Tab / Alt+Shift+Tab). 
+AltTab is a lightweight native Win32 alternative to the Windows task switcher. It adds instant fuzzy search,
+process grouping, window/process actions, and a modern Windows 11-style interface without a UI framework.
 
 ## Build
 
@@ -40,6 +41,12 @@ Create a CPack package after building:
 cmake --build --preset clang-release --target package
 ```
 
+Run the focused theme and settings-migration checks with:
+
+```powershell
+ctest --preset clang-release --output-on-failure
+```
+
 Build output is kept under `out/`. Do not use the removed `.sln`, `.vcxproj`, or MSBuild packaging scripts.
 
 ## Usage
@@ -53,32 +60,50 @@ Run `AltTab.exe` once. The application stays in the notification area and opens 
 * `Delete` closes normally; `Shift+Delete` force-terminates the selected window/process.
 * `Escape` cancels the switcher.
 
-`AltTabSettings.ini` is stored beside the executable. It controls appearance, hotkeys, process groups, and process exclusions. Reload it from the notification-area menu after manual edits.
+`AltTabSettings.ini` is stored beside the executable. It controls appearance, hotkeys, process groups, and process
+exclusions. Reload it from the notification-area menu after manual edits.
+
+## Appearance
+
+The Settings dialog offers four theme modes:
+
+* `System` (default) follows the Windows app light/dark setting.
+* `Light` and `Dark` force the built-in modern palettes.
+* `Custom` uses the legacy INI font, color, highlight, and window-transparency values.
+
+Windows High Contrast overrides all palettes with system colors. Windows 11 uses documented DWM rounded corners,
+border color, dark mode, and transient backdrop support when available; Windows 10 uses the same layout and typography
+with a solid panel fallback.
+
+Existing INI files without `[Appearance] Mode` automatically load as `Custom`, so upgrades keep their previous visual
+choices. New files and Reset use:
+
+```ini
+[Appearance]
+Mode=System
+```
+
+`ShowProcessName` replaces `ShowColProcessName`. The old key is still accepted when the new key is absent, but AltTab
+saves only the new name.
 
 # Features
 * Find the right window faster (filter windows using search string), uses fuzzy string matching algorithm (no need to type the exact search string).
 * Switch between windows of the same application using Alt + \` (Grave Accent / Backtick, the key right above the Tab on a US English keyboard layout).
 * Terminate a process or all processes either normally or forcefully using keyboard shortcuts.
-Hide / Un-hide windows.
-* Provided configuration/setting INI file & UI to change font style, background color, window transparency, width and height.
+* Hide or unhide windows.
+* Native, DPI-aware light/dark switcher with rounded search and selection surfaces.
+* Themed native tray and window menus with keyboard navigation and submenu behavior intact.
+* INI configuration for theme mode, Custom-mode fonts/colors/transparency, width, height, and behavior.
 
 ## SAST Tools
 
 [PVS-Studio](https://pvs-studio.com/en/pvs-studio/?utm_source=website&utm_medium=github&utm_campaign=open_source) - static analyzer for C, C++, C#, and Java code.
 
-## Screenshots
-### AltTab main window
-![](https://github.com/lokeshgovindu/AltTab/blob/master/Screenshots/AltTab.gif)
-### AltTab Settings
-![](https://github.com/lokeshgovindu/AltTab/blob/master/Screenshots/6.Settings.png)
-### AltBacktick
-![](https://github.com/lokeshgovindu/AltTab/blob/master/Screenshots/7.AltBacktick.png)
-### AltBacktick with SimilarProcessGroups
-![](https://github.com/lokeshgovindu/AltTab/blob/master/Screenshots/8.SimilarProcessGroups.png)
-### ContextMenu
-![](https://github.com/lokeshgovindu/AltTab/blob/master/Screenshots/9.0.ContextMenu.png)
-![](https://github.com/lokeshgovindu/AltTab/blob/master/Screenshots/9.1.ContextMenu.png)
-### TrayMenu
-![](https://github.com/lokeshgovindu/AltTab/blob/master/Screenshots/10.TrayMenu.png)
+## UI implementation
+
+The switcher keeps native `EDIT` and `SysListView32` controls for caret/IME, accessibility, scrolling, and input. A small
+GDI renderer owns its fonts and brushes and paints the modern surfaces, rows, match emphasis, and vector close glyph.
+Popup menus remain native `HMENU` trees and use a shared owner-draw session, preserving native focus, dismissal, keyboard
+navigation, and command dispatch.
 
 [gh-downloads]: https://img.shields.io/github/downloads/lokeshgovindu/AltTab/total?color=pink&label=GitHub%20Downloads

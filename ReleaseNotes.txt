@@ -13,6 +13,39 @@ Known Issues
 - Available @ https://sourceforge.net/p/alttab/tickets/
 
 
+2026.2.0.0 new features and bug fixes
+-------------------------------------
++ Reworked the switcher with a native Windows 11-style layout while retaining
+  Win32 EDIT/ListView input, scrolling, IME, keyboard, and accessibility
+  behavior.
+  > Added DPI-aware 52 px rows, 32 px icons, title/process typography, rounded
+    hover and accent-selection surfaces, and a vector close button.
+  > Added per-monitor placement and DPI refresh.
+  > Added documented DWM dark mode, rounded-corner, border-color, and transient
+    backdrop requests with a solid Windows 10 fallback.
+
++ Added System, Light, Dark, and Custom appearance modes.
+  > System is the fresh-install and Reset default.
+  > Existing INIs without [Appearance] Mode migrate to Custom and keep legacy
+    font, color, match-highlight, and transparency values.
+  > High Contrast uses Windows system colors.
+
++ Modernized tray and switcher context menus using native owner-drawn HMENU
+  sessions. Keyboard navigation, checks, disabled states, accelerators,
+  submenus, focus, dismissal, and command IDs are preserved.
+
++ Replaced ShowColProcessName with ShowProcessName. The legacy key remains a
+  read-only compatibility fallback. Column headers are no longer displayed.
+
++ Added standard-library assertion tests for appearance parsing/migration,
+  palettes, accent blending/contrast, DPI scaling, and process-name migration.
+
+- Removed the gradient row renderer, close-button PNG resources, GDI+ startup,
+  and the GDI+/Msimg32 link dependencies.
+- Fixed switcher fonts, brushes, image lists, and subclasses surviving repeated
+  switcher openings.
+
+
 2026.1.0.0 new features and bug fixes
 -------------------------------------
 + Used edit control instead of static text control for search string. We can see

@@ -150,10 +150,6 @@ void ShowCustomToolTipAt(const std::wstring& tooltipText, const POINT& pt, const
 
 void CALLBACK HideCustomToolTip(HWND hWnd = nullptr, UINT uMsg = 0, UINT_PTR idEvent = 0, DWORD dwTime = 0);
 
-HBITMAP LoadPngAsHBITMAP(HINSTANCE hInst, int resID, int cx, int cy);
-
-void InitImageList();
-
 /*!
  * @brief Displays a modal dialog box containing a message and optional caption
  * in a Windows application (wide-character version).

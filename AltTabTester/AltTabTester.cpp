@@ -12,48 +12,40 @@
 #define MAX_LOADSTRING 100
 
 // Global Variables:
-HINSTANCE hInst;                                // current instance
-WCHAR szTitle[MAX_LOADSTRING];                  // The title bar text
-WCHAR szWindowClass[MAX_LOADSTRING];            // the main window class name
+HINSTANCE hInst;                     // current instance
+WCHAR szTitle[MAX_LOADSTRING];       // The title bar text
+WCHAR szWindowClass[MAX_LOADSTRING]; // the main window class name
 
 // ----------------------------------------------------------------------------
 // Global Variables:
 // ----------------------------------------------------------------------------
-HINSTANCE       g_hInstance;                                   // Current instance
-HHOOK           g_KeyboardHook;                                // Keyboard Hook
-HWND            g_hAltTabWnd           = nullptr;              // AltTab window handle
-HWND            g_hFGWnd               = nullptr;              // Foreground window handle
-HWND            g_hMainWnd             = nullptr;              // AltTab main window handle
-HWND            g_hSettingsWnd         = nullptr;              // AltTab settings window handle
-UINT_PTR        g_TooltipTimerId;
-bool            g_TooltipVisible       = false;                // Is tooltip visible or not
-TOOLINFO        g_ToolInfo             = {};                   // Custom tool tip
-bool            g_IsAltKeyPressed      = false;                // Is Alt key pressed
-DWORD           g_LastAltKeyPressTime  = 0;                    // Last Alt key press time
-bool            g_IsAltTab             = false;                // Is Alt+Tab pressed
-bool            g_IsAltCtrlTab         = false;                // Is Alt+Ctrl+Tab pressed
-bool            g_IsAltBacktick        = false;                // Is Alt+Backtick pressed
-DWORD           g_MainThreadID         = GetCurrentThreadId(); // Main thread ID
-DWORD           g_idThreadAttachTo     = 0;
-HIMAGELIST      g_hImageList           = nullptr;
-HIMAGELIST      g_hLVImageList         = nullptr;
-int             g_nImgCloseActiveInd   = -1;
-int             g_nImgCloseInactiveInd = -1;
+HINSTANCE g_hInstance;         // Current instance
+HHOOK g_KeyboardHook;          // Keyboard Hook
+HWND g_hAltTabWnd = nullptr;   // AltTab window handle
+HWND g_hFGWnd = nullptr;       // Foreground window handle
+HWND g_hMainWnd = nullptr;     // AltTab main window handle
+HWND g_hSettingsWnd = nullptr; // AltTab settings window handle
+UINT_PTR g_TooltipTimerId;
+bool g_TooltipVisible = false;               // Is tooltip visible or not
+TOOLINFO g_ToolInfo = {};                    // Custom tool tip
+bool g_IsAltKeyPressed = false;              // Is Alt key pressed
+DWORD g_LastAltKeyPressTime = 0;             // Last Alt key press time
+bool g_IsAltTab = false;                     // Is Alt+Tab pressed
+bool g_IsAltCtrlTab = false;                 // Is Alt+Ctrl+Tab pressed
+bool g_IsAltBacktick = false;                // Is Alt+Backtick pressed
+DWORD g_MainThreadID = GetCurrentThreadId(); // Main thread ID
+DWORD g_idThreadAttachTo = 0;
+HIMAGELIST g_hLVImageList = nullptr;
 
 IsHungAppWindowFunc g_pfnIsHungAppWindow = nullptr;
 
 // The tester does not include AltTab.cpp's tray implementation.
-bool ShowTrayContextMenu(HWND, POINT)
-{
+bool ShowTrayContextMenu(HWND, POINT) {
     return false;
 }
 
-
-int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
-                     _In_opt_ HINSTANCE hPrevInstance,
-                     _In_ LPWSTR    lpCmdLine,
-                     _In_ int       nCmdShow)
-{
+int APIENTRY
+wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPWSTR lpCmdLine, _In_ int nCmdShow) {
     UNREFERENCED_PARAMETER(hPrevInstance);
     UNREFERENCED_PARAMETER(lpCmdLine);
 
@@ -99,13 +91,11 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     // Initialize common things
     RegisterAltTabWindow();
 
-    // Initialize the common things like common controls, GDI+ etc.
-    InitGDIPlus();
+    // Initialize common platform services.
     InitializeCOM();
-    InitImageList();
 
     // Load GeneralSettings
-    
+
     CreateCustomToolTip();
 
     // ----------------------------------------------------------------------------
@@ -116,10 +106,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     // Load settings from AltTabSettings.ini file
     ATLoadSettings();
 
-
     // AltTab settings dialog
-     //DialogBox(hInstance, MAKEINTRESOURCE(IDD_ABOUTBOX), nullptr, ATAboutDlgProc);
-    //DialogBox(hInstance, MAKEINTRESOURCE(IDD_SETTINGS), nullptr, ATSettingsDlgProc);
+    // DialogBox(hInstance, MAKEINTRESOURCE(IDD_ABOUTBOX), nullptr, ATAboutDlgProc);
+    // DialogBox(hInstance, MAKEINTRESOURCE(IDD_SETTINGS), nullptr, ATSettingsDlgProc);
 
     g_IsAltCtrlTab = true;
     ShowAltTabWindow(g_hAltTabWnd, 1);

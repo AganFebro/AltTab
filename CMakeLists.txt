@@ -32,7 +32,10 @@ configure_file(
 set(ALTTAB_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/source")
 set(ALTTAB_COMMON_SOURCES
     "${ALTTAB_SOURCE_DIR}/AltTabSettings.cpp"
+    "${ALTTAB_SOURCE_DIR}/AltTabTheme.cpp"
+    "${ALTTAB_SOURCE_DIR}/AltTabMenu.cpp"
     "${ALTTAB_SOURCE_DIR}/AltTabWindow.cpp"
+    "${ALTTAB_SOURCE_DIR}/AltTabWindowRenderer.cpp"
     "${ALTTAB_SOURCE_DIR}/CheckForUpdates.cpp"
     "${ALTTAB_SOURCE_DIR}/fuzzywuzzy.cpp"
     "${ALTTAB_SOURCE_DIR}/GlobalData.cpp"
@@ -42,7 +45,10 @@ set(ALTTAB_COMMON_SOURCES
 set(ALTTAB_COMMON_HEADERS
     "${ALTTAB_SOURCE_DIR}/AltTab.h"
     "${ALTTAB_SOURCE_DIR}/AltTabSettings.h"
+    "${ALTTAB_SOURCE_DIR}/AltTabTheme.h"
+    "${ALTTAB_SOURCE_DIR}/AltTabMenu.h"
     "${ALTTAB_SOURCE_DIR}/AltTabWindow.h"
+    "${ALTTAB_SOURCE_DIR}/AltTabWindowRenderer.h"
     "${ALTTAB_SOURCE_DIR}/CheckForUpdates.h"
     "${ALTTAB_SOURCE_DIR}/fuzzywuzzy.h"
     "${ALTTAB_SOURCE_DIR}/GlobalData.h"
@@ -64,12 +70,11 @@ set(ALTTAB_WINDOWS_LIBRARIES
     Dwmapi
     Shell32
     Version
-    Msimg32
     Psapi
     Taskschd
     comsuppw
     comsupp
-    gdiplus
+    Uxtheme
     wininet
     ole32
     oleaut32
@@ -147,8 +152,23 @@ if(ALTTAB_BUILD_TESTER)
     set_target_properties(AltTabTester PROPERTIES
         OUTPUT_NAME "AltTabTester"
         LINKER_TYPE LLD
+        WIN32_EXECUTABLE TRUE
     )
     target_link_options(AltTabTester PRIVATE "/ENTRY:wWinMainCRTStartup")
+endif()
+
+if(BUILD_TESTING)
+    add_executable(AltTabThemeTests
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/AltTabThemeTests.cpp"
+        "${ALTTAB_SOURCE_DIR}/AltTabTheme.cpp"
+        "${ALTTAB_SOURCE_DIR}/AltTabTheme.h"
+    )
+    target_include_directories(AltTabThemeTests PRIVATE "${ALTTAB_SOURCE_DIR}")
+    target_compile_definitions(AltTabThemeTests PRIVATE UNICODE _UNICODE _CRT_SECURE_NO_WARNINGS)
+    target_compile_options(AltTabThemeTests PRIVATE /EHsc /W4 /permissive-)
+    target_link_libraries(AltTabThemeTests PRIVATE Dwmapi advapi32 user32 gdi32)
+    set_target_properties(AltTabThemeTests PROPERTIES LINKER_TYPE LLD)
+    add_test(NAME AltTabThemeTests COMMAND AltTabThemeTests)
 endif()
 
 if(ALTTAB_ENABLE_LOGGER)
@@ -204,6 +224,7 @@ install(TARGETS AltTab
     RUNTIME DESTINATION .
 )
 install(FILES
+    "${CMAKE_CURRENT_SOURCE_DIR}/AltTabSettings.ini"
     "${CMAKE_CURRENT_SOURCE_DIR}/AltTab.chm"
     "${CMAKE_CURRENT_SOURCE_DIR}/ReadMe.txt"
     "${CMAKE_CURRENT_SOURCE_DIR}/ReleaseNotes.txt"

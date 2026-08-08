@@ -160,9 +160,10 @@ BEGIN
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,210,90,144,10
     CONTROL         "Show &Search String",IDC_CHECK_SHOW_SEARCH_STRING,
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,210,103,144,10
-    CONTROL         "Show &Column Header",IDC_CHECK_SHOW_COL_HEADER,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,210,116,144,10
-    CONTROL         "Show Column &Process Name",IDC_CHECK_SHOW_COL_PROCESSNAME,
-                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,210,129,144,10
+    LTEXT           "Theme",IDC_STATIC,210,117,35,8
+    COMBOBOX        IDC_COMBO_APPEARANCE,248,114,106,60,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    CONTROL         "Show &process name",IDC_CHECK_SHOW_PROCESSNAME,
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,210,132,144,10
     GROUPBOX        "Mouse Hover",IDC_GROUPBOX_MOUSEHOVER,7,166,355,53
     CONTROL         "Show ProcessInfo Tooltip",IDC_CHECK_MH_SHOW_PROCESSINFO_TOOLTIP,
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,13,178,144,10
@@ -262,16 +263,6 @@ BEGIN
 END
 
 #endif    // APSTUDIO_INVOKED
-
-
-/////////////////////////////////////////////////////////////////////////////
-//
-// RCDATA
-//
-
-IDB_PNG_CLOSE_WINDOW_ACTIVE RCDATA                  "res\\CloseWindowActive.png"
-
-IDB_PNG_CLOSE_WINDOW_INACTIVE RCDATA                  "res\\CloseWindowInactive.png"
 
 
 /////////////////////////////////////////////////////////////////////////////

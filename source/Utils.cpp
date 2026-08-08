@@ -14,9 +14,6 @@
 #include "fuzzywuzzy.h"
 #include <shellapi.h>
 #include "Logger.h"
-#include <gdiplus.h>
-
-ULONG_PTR g_gdiplusToken;
 
 bool EnableConsoleWindow() {
     if (!AttachConsole(ATTACH_PARENT_PROCESS)) {
@@ -833,18 +830,4 @@ bool InitializeCOM() {
 
 void UninitializeCOM() {
     CoUninitialize();
-}
-
-void InitGDIPlus() {
-    Gdiplus::GdiplusStartupInput gdiplusStartupInput;
-    if (Gdiplus::GdiplusStartup(&g_gdiplusToken, &gdiplusStartupInput, nullptr) != Gdiplus::Ok) {
-        g_gdiplusToken = 0;
-        AT_LOG_ERROR("GdiplusStartup failed.");
-    }
-}
-
-void ShutdownGDIPlus() {
-    if (g_gdiplusToken == 0)
-        return;
-    Gdiplus::GdiplusShutdown(g_gdiplusToken);
 }

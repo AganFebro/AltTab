@@ -22,6 +22,17 @@ Introduction
 ------------
 AltTab is an alternative application for native windows switcher.
 
+The switcher follows the Windows light/dark app theme by default and uses a
+modern DPI-aware title-plus-process layout. Open Settings to select System,
+Light, Dark, or Custom. Custom keeps the INI font, color, search-highlight, and
+window-transparency settings used by older AltTab versions.
+
+Existing AltTabSettings.ini files without an [Appearance] Mode entry load as
+Custom automatically. New settings files and Reset use:
+
+  [Appearance]
+  Mode=System
+
 - Use Alt+Tab / Alt+Shift+Tab / Alt+Backtick / Alt+Shift+Backtick to bring the
   main AltTab window, and use 
 

@@ -46,9 +46,7 @@ const wchar_t* TT_SHOW_SS_CUE_BANNER_TEXT      = LR"(Default banner text display
 
 const wchar_t* TT_SHOW_SEARCH_STRING           = LR"(Show/hide search string control in AltTab window)";
 
-const wchar_t* TT_SHOW_COLUMN_HEADER           = LR"(Show/hide column header of AltTab window listview)";
-
-const wchar_t* TT_SHOW_COLUMN_PROCESS_NAME     = LR"(Show/hide process name column in AltTab window listview)";
+const wchar_t* TT_SHOW_PROCESS_NAME            = LR"(Show/hide the process name below each window title)";
 
 const wchar_t* TT_SHOW_PROCESSINFO_TOOLTIP     = LR"(Show process information (Path & PID) tooltip in AltTab window listview)";
 

@@ -51,16 +51,20 @@ Build artifacts are written below `out/`. The optional `AltTabTester` target is 
 ### Core Application Flow
 
 1. **Entry Point** (`AltTab.cpp`) - Initializes global state, creates the main window, and sets up the keyboard hook
-2. **Main Window** (`AltTabWindow.cpp/h`) - Renders the window UI and list view
+2. **Main Window** (`AltTabWindow.cpp/h`) - Controls enumeration, filtering, selection, input, and activation
 3. **Keyboard Hook** (`LLKeyboardProc`) - Captures Alt+Tab, Alt+Backtick, and Alt+Ctrl+Tab
 4. **Settings** (`AltTabSettings.cpp/h`) - Loads, saves, and validates INI configuration
+5. **Theme/Rendering** (`AltTabTheme`, `AltTabWindowRenderer`, `AltTabMenu`) - Resolves palettes/DPI metrics and owner-draws native controls and menus
 
 ### Key Files by Responsibility
 
 | File | Purpose |
 | --- | --- |
 | `AltTab.cpp/h` | Global state, keyboard hook, tray icon, and elevation handling |
-| `AltTabWindow.cpp/h` | Window rendering, list view, mouse, and keyboard handling |
+| `AltTabWindow.cpp/h` | Switcher controller, window enumeration, filtering, selection, input, and activation |
+| `AltTabTheme.cpp/h` | Appearance modes, system theme/accent detection, palettes, DPI metrics, and DWM chrome |
+| `AltTabWindowRenderer.cpp/h` | GDI switcher/search/row rendering and visual-resource ownership |
+| `AltTabMenu.cpp/h` | RAII owner drawing for native tray and window popup menus |
 | `AltTabSettings.cpp/h` | INI parsing, serialization, defaults, and validation |
 | `Logger.cpp/h` | Optional log4cpp wrapper |
 | `CheckForUpdates.cpp/h` | Version checking |
@@ -72,7 +76,8 @@ Build artifacts are written below `out/`. The optional `AltTabTester` target is 
 ### Configuration System
 
 - **Settings file**: `AltTabSettings.ini` in the application directory
-- **Sections**: `[SearchString]`, `[ListView]`, `[General]`, `[Hotkeys]`, `[Backtick]`, and `[ProcessExclusions]`
+- **Sections**: `[Appearance]`, `[SearchString]`, `[ListView]`, `[General]`, `[Hotkeys]`, `[Backtick]`, and `[ProcessExclusions]`
+- **Appearance**: `Mode=System|Light|Dark|Custom`; a missing key migrates an existing INI to `Custom`
 - **Colors**: hexadecimal RGB values such as `0xFF0000`
 - **Font styles**: `normal`, `italic`, `bold`, or `bold italic`
 - **Reload**: tray menu -> `Reload AltTabSettings.ini`
@@ -119,6 +124,7 @@ Logging is optional and enabled only when the CMake `ALTTAB_ENABLE_LOGGER` optio
 3. Serialize it in the save path.
 4. Extend `IsValid()`.
 5. Add a Settings dialog control in `AltTab.rc` when needed.
+6. Add migration/parse coverage to `tests/AltTabThemeTests.cpp` when compatibility is involved.
 
 ### Modifying Window List Filtering
 
@@ -135,14 +141,14 @@ Elevation helpers live in `Utils.cpp`. Elevated AltTab may be required to contro
 ## Known Limitations
 
 - Hotkeys do not work for an elevated foreground application unless AltTab also runs elevated.
-- Multiple-monitor support is not implemented.
+- The switcher opens on the foreground window's monitor, but it does not span or combine monitors.
 - Some highlight colors are configurable only through the INI file.
 
 ## Resource Files
 
 - `AltTab.rc` - Dialogs, strings, icons, and version information
 - `resource.h` - Resource identifiers
-- `AltTabHelp.hnd`, `Help.mht`, and `Help.docx` - User documentation
+- `AltTab.chm`, `ReadMe.txt`, and `ReleaseNotes.txt` - Packaged user documentation
 
 ## Version Tracking
 
