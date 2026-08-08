@@ -62,6 +62,7 @@ Build artifacts are written below `out/`. The optional `AltTabTester` target is 
 | --- | --- |
 | `AltTab.cpp/h` | Global state, keyboard hook, tray icon, and elevation handling |
 | `AltTabMonitor.cpp/h` | Monitor enumeration, friendly labels, persistent identities, DPI, and placement resolution |
+| `AltTabLayout.cpp/h` | Layout/position/scale parsing and deterministic Dock geometry |
 | `AltTabWindow.cpp/h` | Switcher controller, window enumeration, filtering, selection, input, and activation |
 | `AltTabTheme.cpp/h` | Appearance modes, system theme/accent detection, palettes, DPI metrics, and DWM chrome |
 | `AltTabWindowRenderer.cpp/h` | GDI switcher/search/row rendering and visual-resource ownership |
@@ -80,6 +81,8 @@ Build artifacts are written below `out/`. The optional `AltTabTester` target is 
 - **Sections**: `[Appearance]`, `[SearchString]`, `[ListView]`, `[General]`, `[Hotkeys]`, `[Backtick]`, and `[ProcessExclusions]`
 - **Appearance**: `Mode=System|Light|Dark|Custom`; a missing key migrates an existing INI to `Custom`
 - **Monitor placement**: `SwitcherMonitor=Automatic` or a persistent monitor device path; unavailable fixed monitors fall back to primary without losing the saved choice
+- **Switcher layout**: `SwitcherLayout=Dock|List`; missing legacy keys resolve to `List`
+- **Dock options**: `DockPosition=LowerThird|Center` and `DockScale=Default|Small|ExtraSmall`; both affect Dock only
 - **Colors**: hexadecimal RGB values such as `0xFF0000`
 - **Font styles**: `normal`, `italic`, `bold`, or `bold italic`
 - **Reload**: tray menu -> `Reload AltTabSettings.ini`
@@ -126,7 +129,7 @@ Logging is optional and enabled only when the CMake `ALTTAB_ENABLE_LOGGER` optio
 3. Serialize it in the save path.
 4. Extend `IsValid()`.
 5. Add a Settings dialog control in `AltTab.rc` when needed.
-6. Add migration/parse coverage to `tests/AltTabThemeTests.cpp` when compatibility is involved.
+6. Add migration/parse coverage to the focused layout, theme, or monitor assertion test.
 
 ### Modifying Window List Filtering
 

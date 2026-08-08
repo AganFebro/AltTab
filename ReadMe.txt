@@ -38,6 +38,16 @@ The Settings dialog also provides a Switcher monitor dropdown. Automatic
 locks the switcher to that physical monitor. If it is disconnected, AltTab uses
 the primary monitor until the selected display reconnects.
 
+Switcher layout selects the horizontal Dock or original vertical List. Fresh
+settings and Reset use Dock; existing INIs without SwitcherLayout keep List.
+Dock position selects Lower third or Center, and Dock size provides Default,
+Small, and Extra small presets without changing List mode.
+
+  [General]
+  SwitcherLayout=Dock
+  DockPosition=LowerThird
+  DockScale=Default
+
 - Use Alt+Tab / Alt+Shift+Tab / Alt+Backtick / Alt+Shift+Backtick to bring the
   main AltTab window, and use 
 

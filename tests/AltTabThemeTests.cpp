@@ -36,10 +36,15 @@ int main() {
     const ThemeMetrics dpi120 = ResolveThemeMetrics(120);
     const ThemeMetrics dpi144 = ResolveThemeMetrics(144);
     const ThemeMetrics dpi192 = ResolveThemeMetrics(192);
+    const ThemeMetrics dockSmall = ResolveThemeMetrics(96, 85);
+    const ThemeMetrics dockExtraSmall = ResolveThemeMetrics(96, 70);
     assert(dpi96.rowHeight == 52 && dpi96.iconSize == 32);
+    assert(dpi96.dockRailHeight == 76 && dpi96.dockIconSize == 52 && dpi96.dockCaptionHeight == 38);
     assert(dpi120.rowHeight == 65 && dpi120.iconSize == 40);
     assert(dpi144.rowHeight == 78 && dpi144.iconSize == 48);
     assert(dpi192.rowHeight == 104 && dpi192.iconSize == 64);
+    assert(dockSmall.rowHeight == 52 && dockSmall.dockRailHeight == 65 && dockSmall.dockIconSize == 44);
+    assert(dockExtraSmall.rowHeight == 52 && dockExtraSmall.dockRailHeight == 53 && dockExtraSmall.dockIconSize == 36);
 
     const COLORREF accent = Color(0x00, 0x78, 0xd4);
     const CustomThemeValues custom{

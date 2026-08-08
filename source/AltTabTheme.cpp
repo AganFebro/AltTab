@@ -157,11 +157,15 @@ double ThemeContrastRatio(COLORREF first, COLORREF second) {
     return (lighter + 0.05) / (darker + 0.05);
 }
 
-ThemeMetrics ResolveThemeMetrics(UINT dpi) {
+ThemeMetrics ResolveThemeMetrics(UINT dpi, int dockScalePercent) {
     const auto scale = [dpi](int value) { return MulDiv(value, static_cast<int>(dpi), 96); };
+    const auto scaleDock = [scale, dockScalePercent](int value) {
+        return (std::max)(1, MulDiv(scale(value), std::clamp(dockScalePercent, 50, 100), 100));
+    };
     return {
-        scale(12), scale(12), scale(8),  scale(40), scale(8), scale(52),
-        scale(32), scale(12), scale(28), scale(34), scale(9),
+        scale(12),    scale(12),     scale(8),      scale(40),      scale(8),      scale(52),
+        scale(32),    scale(12),     scale(28),     scaleDock(76),  scaleDock(52), scaleDock(68),
+        scaleDock(4), scaleDock(38), scaleDock(20), scaleDock(280), scale(34),     scale(9),
     };
 }
 
@@ -251,7 +255,7 @@ ThemeSnapshot ResolveTheme(const AltTabSettings& settings, UINT dpi) {
                          && ThemeContrastRatio(settings.LVBackgroundColor, RGB(255, 255, 255))
                                 > ThemeContrastRatio(settings.LVBackgroundColor, RGB(0, 0, 0))));
     theme.dpi = dpi == 0 ? 96 : dpi;
-    theme.metrics = ResolveThemeMetrics(theme.dpi);
+    theme.metrics = ResolveThemeMetrics(theme.dpi, DockScalePercent(settings.DockSize));
     const CustomThemeValues customValues{
         settings.SSFontColor,       settings.SSBackgroundColor,    settings.LVFontColor,
         settings.LVBackgroundColor, settings.LVHighlightTextColor, settings.LVHighlightBackgroundColor,

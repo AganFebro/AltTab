@@ -4,6 +4,7 @@
 #include "PreCompile.h"
 #include "version.h"
 #include "AltTabWindow.h"
+#include "AltTabLayout.h"
 #include "AltTabMenu.h"
 #include "AltTabMonitor.h"
 #include "AltTabTheme.h"
@@ -12,6 +13,7 @@
 #include "Logger.h"
 
 #include <CommCtrl.h>
+#include <commoncontrols.h>
 #include <Psapi.h>
 #include <Windows.h>
 #include <dwmapi.h>
@@ -78,11 +80,13 @@ static void ATW_OnDrawItem(HWND hwnd, const DRAWITEMSTRUCT* lpDrawItem);
 static void ATW_OnKeyDown(HWND hwnd, UINT vk, BOOL fDown, int cRepeat, UINT flags);
 static void ATW_OnKillFocus(HWND hwnd, HWND hwndNewFocus);
 static void ATW_OnLButtonDown(HWND hwnd, BOOL fDoubleClick, int x, int y, UINT keyFlags);
-static BOOL ATW_OnNotify(HWND hwnd, int idFrom, NMHDR* pnmhdr);
+static LRESULT ATW_OnNotify(HWND hwnd, int idFrom, NMHDR* pnmhdr);
 static void ATW_OnSysCommand(HWND hwnd, UINT cmd, int x, int y);
 static void ATW_OnTimer(HWND hwnd, UINT id);
 static void LayoutSwitcherWindow(HWND hWnd);
 static void RebuildSwitcherVisuals(HWND hWnd, UINT dpi);
+static void UpdateDockSearchLayout();
+static void RefreshDockSearch();
 
 std::vector<AltTabWindowData> g_AltTabWindows;
 
@@ -199,6 +203,63 @@ HICON GetWindowIcon(HWND hWnd) {
 
     return hIcon;
 }
+
+namespace {
+
+    bool IconIsAtLeast(HICON icon, int desiredSize) {
+        if (!icon)
+            return false;
+        ICONINFO info{};
+        if (!GetIconInfo(icon, &info))
+            return false;
+        BITMAP bitmap{};
+        const HBITMAP source = info.hbmColor ? info.hbmColor : info.hbmMask;
+        const bool result = source && GetObjectW(source, sizeof(bitmap), &bitmap) == sizeof(bitmap)
+                            && bitmap.bmWidth >= desiredSize
+                            && (info.hbmColor ? bitmap.bmHeight : bitmap.bmHeight / 2) >= desiredSize;
+        if (info.hbmColor)
+            DeleteObject(info.hbmColor);
+        if (info.hbmMask)
+            DeleteObject(info.hbmMask);
+        return result;
+    }
+
+    HICON LoadShellIcon(const std::wstring& path) {
+        if (path.empty())
+            return nullptr;
+        SHFILEINFOW fileInfo{};
+        if (!SHGetFileInfoW(path.c_str(), 0, &fileInfo, sizeof(fileInfo), SHGFI_SYSICONINDEX))
+            return nullptr;
+
+        // Extra-large Shell icons are usually true 48 px assets. Jumbo frequently wraps a
+        // legacy icon in a padded 256 px canvas, which looks tiny when the image list scales it.
+        for (int size : { SHIL_EXTRALARGE, SHIL_JUMBO }) {
+            IImageList* imageList = nullptr;
+            if (SUCCEEDED(SHGetImageList(size, IID_IImageList, reinterpret_cast<void**>(&imageList))) && imageList) {
+                HICON icon = nullptr;
+                const HRESULT result = imageList->GetIcon(fileInfo.iIcon, ILD_TRANSPARENT, &icon);
+                imageList->Release();
+                if (SUCCEEDED(result) && icon)
+                    return icon;
+            }
+        }
+        return nullptr;
+    }
+
+    void AddBestIcon(HIMAGELIST imageList, const AltTabWindowData& window, int desiredSize) {
+        if (IconIsAtLeast(window.hIcon, desiredSize)) {
+            ImageList_AddIcon(imageList, window.hIcon);
+            return;
+        }
+        if (HICON shellIcon = LoadShellIcon(window.FullPath)) {
+            ImageList_AddIcon(imageList, shellIcon);
+            DestroyIcon(shellIcon);
+            return;
+        }
+        ImageList_AddIcon(imageList, window.hIcon);
+    }
+
+} // namespace
 
 BOOL CALLBACK EnumWindowsProc(HWND hWnd, LPARAM lParam) {
     if (IsAltTabWindow(hWnd)) {
@@ -435,32 +496,37 @@ void RefreshAltTabWindow() {
         }
     }
 
-    const int imageSize = g_SwitcherRenderer ? g_SwitcherRenderer->Theme().metrics.iconSize : 32;
+    const bool dock = g_Settings.Layout == SwitcherLayout::Dock;
+    const int imageSize = g_SwitcherRenderer ? (dock ? g_SwitcherRenderer->Theme().metrics.dockIconSize
+                                                     : g_SwitcherRenderer->Theme().metrics.iconSize)
+                                             : (dock ? 52 : 32);
     const int rowHeight = g_SwitcherRenderer ? g_SwitcherRenderer->Theme().metrics.rowHeight : 52;
 
-    // Create ImageList and add icons, assign a dummy ImageList to set the row height
-    // The row height is determined by the height of the icons in the ImageList assigned as LVSIL_SMALL
-    // But the icons in the ImageList are drawn using the ImageList g_hLVImageList.
-    HIMAGELIST hImageListDummy = ImageList_Create(1, rowHeight, ILC_COLOR32, 1, 1);
+    if (g_hRowHeightImageList) {
+        ListView_SetImageList(g_hListView, nullptr, LVSIL_SMALL);
+        ImageList_Destroy(std::exchange(g_hRowHeightImageList, nullptr));
+    }
+    if (g_hLVImageList) {
+        ListView_SetImageList(g_hListView, nullptr, LVSIL_NORMAL);
+        ImageList_Destroy(std::exchange(g_hLVImageList, nullptr));
+    }
+
+    HIMAGELIST hImageListDummy = dock ? nullptr : ImageList_Create(1, rowHeight, ILC_COLOR32, 1, 1);
     HIMAGELIST hImageList = ImageList_Create(imageSize, imageSize, ILC_COLOR32 | ILC_MASK, 0, 1);
 
-    // Destroy the application-icon image list, which is painted manually and is
-    // not owned by the ListView.
-    if (g_hLVImageList) {
-        ImageList_Destroy(g_hLVImageList);
-        g_hLVImageList = nullptr;
-    }
-
     for (const auto& item : g_AltTabWindows) {
-        ImageList_AddIcon(hImageList, item.hIcon);
+        if (dock)
+            AddBestIcon(hImageList, item, imageSize);
+        else
+            ImageList_AddIcon(hImageList, item.hIcon);
     }
 
-    // Set the ImageList for the ListView
-    // Assign as the small image list (LVSIL_SMALL affects row height)
-    HIMAGELIST oldRowHeightImageList = ListView_SetImageList(g_hListView, hImageListDummy, LVSIL_SMALL);
-    g_hRowHeightImageList = hImageListDummy;
-    if (oldRowHeightImageList && oldRowHeightImageList != hImageListDummy)
-        ImageList_Destroy(oldRowHeightImageList);
+    if (dock) {
+        ListView_SetImageList(g_hListView, hImageList, LVSIL_NORMAL);
+    } else {
+        ListView_SetImageList(g_hListView, hImageListDummy, LVSIL_SMALL);
+        g_hRowHeightImageList = hImageListDummy;
+    }
     g_hLVImageList = hImageList;
 
     // Add windows to ListView
@@ -480,9 +546,12 @@ void ATWListViewSelectItem(int rowNumber) {
         return;
     }
 
-    // Move to next / previous item based on the direction
+    const bool dock = g_Settings.Layout == SwitcherLayout::Dock;
+    if (dock)
+        SendMessageW(g_hListView, WM_SETREDRAW, FALSE, 0);
+
     int selectedInd = (int)SendMessageW(g_hListView, LVM_GETNEXTITEM, (WPARAM)-1, LVNI_SELECTED);
-    LVITEM lvItem;
+    LVITEM lvItem{};
     lvItem.stateMask = LVIS_FOCUSED | LVIS_SELECTED;
     lvItem.state = 0;
     SendMessageW(g_hListView, LVM_SETITEMSTATE, selectedInd, (LPARAM)&lvItem);
@@ -491,52 +560,41 @@ void ATWListViewSelectItem(int rowNumber) {
 
     lvItem.state = LVIS_FOCUSED | LVIS_SELECTED;
     SendMessageW(g_hListView, LVM_SETITEMSTATE, rowNumber, (LPARAM)&lvItem);
-    SendMessageW(g_hListView, LVM_ENSUREVISIBLE, rowNumber, (LPARAM)&lvItem);
+    if (!dock)
+        SendMessageW(g_hListView, LVM_ENSUREVISIBLE, rowNumber, (LPARAM)&lvItem);
 
     g_SelectedIndex = rowNumber;
+    if (dock) {
+        RECT item{};
+        RECT viewport{};
+        GetClientRect(g_hAltTabWnd, &viewport);
+        if (g_SwitcherRenderer)
+            viewport.bottom = g_SwitcherRenderer->Theme().metrics.dockRailHeight;
+        if (ListView_GetItemRect(g_hListView, rowNumber, &item, LVIR_ICON)) {
+            const int delta = ResolveDockRevealDelta(item, viewport);
+            if (delta)
+                SendMessageW(g_hListView, LVM_SCROLL, delta, 0);
+        }
+        SendMessageW(g_hListView, WM_SETREDRAW, TRUE, 0);
+        RedrawWindow(g_hListView, nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN);
+        if (g_hAltTabWnd)
+            InvalidateRect(g_hAltTabWnd, nullptr, FALSE);
+    }
 }
 
 void ATWListViewSelectPrevItem() {
-    // Move to next / previous item based on the direction
     int selectedInd = (int)SendMessageW(g_hListView, LVM_GETNEXTITEM, (WPARAM)-1, LVNI_SELECTED);
     if (selectedInd == -1)
         return;
-    int N = (int)g_AltTabWindows.size();
-    int prevInd = (selectedInd + N - 1) % N;
-
-    LVITEM lvItem;
-    lvItem.stateMask = LVIS_FOCUSED | LVIS_SELECTED;
-    lvItem.state = 0;
-    SendMessageW(g_hListView, LVM_SETITEMSTATE, selectedInd, (LPARAM)&lvItem);
-
-    prevInd = max(0, min(prevInd, (int)g_AltTabWindows.size() - 1));
-
-    lvItem.state = LVIS_FOCUSED | LVIS_SELECTED;
-    SendMessageW(g_hListView, LVM_SETITEMSTATE, prevInd, (LPARAM)&lvItem);
-    SendMessageW(g_hListView, LVM_ENSUREVISIBLE, prevInd, (LPARAM)&lvItem);
-
-    g_SelectedIndex = prevInd;
+    const int count = static_cast<int>(g_AltTabWindows.size());
+    ATWListViewSelectItem((selectedInd + count - 1) % count);
 }
 void ATWListViewSelectNextItem() {
-    // Move to next / previous item based on the direction
     int selectedInd = (int)SendMessageW(g_hListView, LVM_GETNEXTITEM, (WPARAM)-1, LVNI_SELECTED);
     if (selectedInd == -1)
         return;
-    int N = (int)g_AltTabWindows.size();
-    int nextInd = (selectedInd + N + 1) % N;
-
-    LVITEM lvItem;
-    lvItem.stateMask = LVIS_FOCUSED | LVIS_SELECTED;
-    lvItem.state = 0;
-    SendMessageW(g_hListView, LVM_SETITEMSTATE, selectedInd, (LPARAM)&lvItem);
-
-    nextInd = max(0, min(nextInd, (int)g_AltTabWindows.size() - 1));
-
-    lvItem.state = LVIS_FOCUSED | LVIS_SELECTED;
-    SendMessageW(g_hListView, LVM_SETITEMSTATE, nextInd, (LPARAM)&lvItem);
-    SendMessageW(g_hListView, LVM_ENSUREVISIBLE, nextInd, (LPARAM)&lvItem);
-
-    g_SelectedIndex = nextInd;
+    const int count = static_cast<int>(g_AltTabWindows.size());
+    ATWListViewSelectItem((selectedInd + count + 1) % count);
 }
 
 void ATWListViewDeleteItem(int rowNumber) {
@@ -631,6 +689,7 @@ void AddListViewItem(HWND hListView, int index, const AltTabWindowData& windowDa
     lvItem.iSubItem = 0;
     lvItem.iImage = index;
     lvItem.lParam = (LPARAM)(&windowData);
+    lvItem.pszText = const_cast<LPWSTR>(windowData.Title.c_str());
 
     ListView_InsertItem(hListView, &lvItem);
     ListView_SetItem(hListView, &lvItem);
@@ -638,8 +697,15 @@ void AddListViewItem(HWND hListView, int index, const AltTabWindowData& windowDa
 
 static void CustomizeListView(HWND hListView, int dpi) {
     // Set extended style for the List View control
-    DWORD dwExStyle = LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER;
+    DWORD dwExStyle = LVS_EX_DOUBLEBUFFER;
+    if (g_Settings.Layout == SwitcherLayout::List)
+        dwExStyle |= LVS_EX_FULLROWSELECT;
     ListView_SetExtendedListViewStyle(hListView, dwExStyle);
+
+    if (g_Settings.Layout == SwitcherLayout::Dock) {
+        ListView_SetIconSpacing(hListView, MulDiv(72, dpi, 96), MulDiv(76, dpi, 96));
+        return;
+    }
 
     // A single report column preserves native scrolling and selection. The
     // renderer owns the title/subtitle layout inside that column.
@@ -658,6 +724,34 @@ static void SetListViewCustomColors(HWND hListView, COLORREF backgroundColor, CO
 
     // Set the text color
     SendMessageW(hListView, LVM_SETTEXTCOLOR, 0, (LPARAM)textColor);
+}
+
+static void RefreshDockSearch() {
+    if (g_Settings.Layout != SwitcherLayout::Dock || !g_hAltTabWnd)
+        return;
+    RefreshAltTabWindow();
+    UpdateDockSearchLayout();
+    InvalidateRect(g_hAltTabWnd, nullptr, FALSE);
+}
+
+static void UpdateDockHotItem(HWND listView, POINT point) {
+    if (g_Settings.Layout != SwitcherLayout::Dock || !g_SwitcherRenderer)
+        return;
+    LVHITTESTINFO hit{};
+    hit.pt = point;
+    const int item = ListView_HitTest(listView, &hit);
+    const int oldItem = g_nLVHotItem;
+    const bool oldCloseHover = g_IsMouseOverCloseButton;
+    g_nLVHotItem = item;
+    g_MouseHoverIndex = item;
+    g_rcBtnClose =
+        g_Settings.ShowDeleteButton && item >= 0 ? g_SwitcherRenderer->DockCloseButtonRect(listView, item) : RECT{};
+    g_IsMouseOverCloseButton = item >= 0 && PtInRect(&g_rcBtnClose, point);
+    if (oldItem != item || oldCloseHover != g_IsMouseOverCloseButton) {
+        InvalidateRect(listView, nullptr, FALSE);
+        if (g_hAltTabWnd)
+            InvalidateRect(g_hAltTabWnd, nullptr, FALSE);
+    }
 }
 
 // Keyboard navigation and actions for the Alt-Tab windows.
@@ -682,7 +776,7 @@ bool TryHandleCommonKeyboardHotkeys(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM 
     // ----------------------------------------------------------------------------
     // VK_DOWN
     // ----------------------------------------------------------------------------
-    else if (wParam == VK_DOWN) {
+    else if (wParam == VK_DOWN || (g_Settings.Layout == SwitcherLayout::Dock && wParam == VK_RIGHT)) {
         AT_LOG_INFO("Down Pressed!");
         ATWListViewSelectNextItem();
         outResult = TRUE;
@@ -691,7 +785,7 @@ bool TryHandleCommonKeyboardHotkeys(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM 
     // ----------------------------------------------------------------------------
     // VK_UP
     // ----------------------------------------------------------------------------
-    else if (wParam == VK_UP) {
+    else if (wParam == VK_UP || (g_Settings.Layout == SwitcherLayout::Dock && wParam == VK_LEFT)) {
         AT_LOG_INFO("Up Pressed!");
         ATWListViewSelectPrevItem();
         outResult = TRUE;
@@ -846,6 +940,13 @@ LRESULT CALLBACK SearchStringSubclassProc(
     }
 
     switch (uMsg) {
+    case WM_SETFOCUS: {
+        const LRESULT result = DefSubclassProc(hWnd, uMsg, wParam, lParam);
+        if (g_Settings.Layout == SwitcherLayout::Dock)
+            HideCaret(hWnd);
+        return result;
+    }
+
     case WM_KEYDOWN:
     case WM_SYSKEYDOWN: {
         AT_LOG_DEBUG("SearchStringSubclassProc WM_KEYDOWN KJS Detected %d", wParam);
@@ -873,6 +974,7 @@ LRESULT CALLBACK SearchStringSubclassProc(
 
                 // Set the cursor to the end of the text
                 SendMessageW(g_hSearchString, EM_SETSEL, (WPARAM)g_SearchString.size(), (LPARAM)g_SearchString.size());
+                RefreshDockSearch();
                 return 0;
             }
 
@@ -916,6 +1018,7 @@ LRESULT CALLBACK SearchStringSubclassProc(
             wchar_t searchString[_MAX_PATH] = { 0 };
             GetWindowTextW(g_hSearchString, searchString, _MAX_PATH);
             g_SearchString = searchString;
+            RefreshDockSearch();
             return result;
         }
         return 0; // Ignore other characters
@@ -947,6 +1050,8 @@ LRESULT CALLBACK ListViewSubclassProc(
     } break;
 
     case WM_MOUSEMOVE: {
+        if (g_Settings.Layout == SwitcherLayout::Dock)
+            UpdateDockHotItem(hListView, { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) });
         // Track mouse leave event
         TRACKMOUSEEVENT tme;
         tme.cbSize = sizeof(tme);
@@ -969,7 +1074,26 @@ LRESULT CALLBACK ListViewSubclassProc(
 
         // Invalidate the ListView to remove any highlighting
         InvalidateRect(hListView, nullptr, TRUE);
+        if (g_hAltTabWnd)
+            InvalidateRect(g_hAltTabWnd, nullptr, FALSE);
     } break;
+
+    case WM_MOUSEWHEEL:
+    case WM_MOUSEHWHEEL:
+        if (g_Settings.Layout == SwitcherLayout::Dock && g_SwitcherRenderer) {
+            const int notches = GET_WHEEL_DELTA_WPARAM(wParam) / WHEEL_DELTA;
+            const int direction = uMsg == WM_MOUSEWHEEL ? -1 : 1;
+            SendMessageW(
+                hListView,
+                LVM_SCROLL,
+                direction * notches
+                    * (g_SwitcherRenderer->Theme().metrics.dockTileSize
+                       + g_SwitcherRenderer->Theme().metrics.dockTileGap),
+                0);
+            InvalidateRect(hListView, nullptr, FALSE);
+            return 0;
+        }
+        break;
 
     // ----------------------------------------------------------------------------
     // Owner draw item
@@ -996,7 +1120,23 @@ INT_PTR CALLBACK AltTabWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lP
         RECT client{};
         GetClientRect(hWnd, &client);
         if (g_SwitcherRenderer) {
-            g_SwitcherRenderer->PaintPanel(hWnd, hdc, client, g_Settings.ShowSearchString);
+            g_SwitcherRenderer->PaintPanel(hWnd, hdc, client, g_Settings.ShowSearchString, g_Settings.Layout);
+            if (g_Settings.Layout == SwitcherLayout::Dock) {
+                const int selected = ATWListViewGetSelectedItem();
+                const int captionIndex = g_nLVHotItem >= 0 ? g_nLVHotItem : selected;
+                const AltTabWindowData* window =
+                    captionIndex >= 0 && captionIndex < static_cast<int>(g_AltTabWindows.size())
+                        ? &g_AltTabWindows[captionIndex]
+                        : nullptr;
+                RECT caption{
+                    0,
+                    g_SwitcherRenderer->Theme().metrics.dockRailHeight,
+                    client.right,
+                    client.bottom,
+                };
+                g_SwitcherRenderer->DrawDockCaption(
+                    hdc, caption, window, g_Settings, g_SearchString, static_cast<int>(g_AltTabWindows.size()));
+            }
         }
         EndPaint(hWnd, &paint);
         return 0;
@@ -1024,11 +1164,20 @@ INT_PTR CALLBACK AltTabWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lP
     case WM_THEMECHANGED:
     case WM_SYSCOLORCHANGE:
     case WM_DISPLAYCHANGE: {
+        const bool controlUsesDock = (GetWindowLongPtrW(g_hListView, GWL_STYLE) & LVS_TYPEMASK) == LVS_ICON;
+        if (controlUsesDock != (g_Settings.Layout == SwitcherLayout::Dock)) {
+            DestroyAltTabWindow();
+            return 0;
+        }
+
         bool usedFallback = false;
         const MonitorDescriptor monitor = ResolveSwitcherMonitor(g_Settings.SwitcherMonitor, g_hFGWnd, &usedFallback);
         const bool dpiChanged = !g_SwitcherRenderer || g_SwitcherRenderer->Theme().dpi != monitor.dpi;
+        const int previousDockIconSize = g_SwitcherRenderer ? g_SwitcherRenderer->Theme().metrics.dockIconSize : 0;
         RebuildSwitcherVisuals(hWnd, monitor.dpi);
-        if (dpiChanged)
+        const bool dockMetricsChanged = g_Settings.Layout == SwitcherLayout::Dock
+                                        && previousDockIconSize != g_SwitcherRenderer->Theme().metrics.dockIconSize;
+        if (dpiChanged || dockMetricsChanged)
             RefreshAltTabWindow();
         else
             LayoutSwitcherWindow(hWnd);
@@ -1576,6 +1725,59 @@ static void LayoutSwitcherWindow(HWND hWnd) {
     }
     const ThemeMetrics& metrics = g_SwitcherRenderer->Theme().metrics;
     const RECT work = monitor.workArea;
+    if (g_Settings.Layout == SwitcherLayout::Dock) {
+        const DockGeometry geometry = ResolveDockGeometry(
+            work,
+            g_SwitcherRenderer->Theme().dpi,
+            g_Settings.WidthPercentage,
+            static_cast<std::size_t>(ListView_GetItemCount(g_hListView)),
+            g_Settings.DockSize,
+            g_Settings.DockPlacement);
+        const int windowWidth = geometry.window.right - geometry.window.left;
+        const int windowHeight = geometry.window.bottom - geometry.window.top;
+        g_Settings.WindowWidth = windowWidth;
+        g_Settings.WindowHeight = windowHeight;
+        SetWindowPos(
+            hWnd,
+            HWND_TOPMOST,
+            geometry.window.left,
+            geometry.window.top,
+            windowWidth,
+            windowHeight,
+            SWP_NOACTIVATE | SWP_SHOWWINDOW);
+
+        SendMessageW(g_hListView, WM_SETREDRAW, FALSE, 0);
+        POINT origin{};
+        if (ListView_GetOrigin(g_hListView, &origin) && (origin.x != 0 || origin.y != 0))
+            SendMessageW(g_hListView, LVM_SCROLL, -origin.x, -origin.y);
+
+        HRGN visibleRegion = CreateRectRgn(0, 0, windowWidth, metrics.dockRailHeight);
+        int listWidth = windowWidth;
+        int listHeight = metrics.dockRailHeight;
+        if (visibleRegion && SetWindowRgn(g_hListView, visibleRegion, FALSE)) {
+            constexpr int scrollbarGuard = 2;
+            listWidth += GetSystemMetricsForDpi(SM_CXVSCROLL, g_SwitcherRenderer->Theme().dpi) + scrollbarGuard;
+            listHeight += GetSystemMetricsForDpi(SM_CYHSCROLL, g_SwitcherRenderer->Theme().dpi) + scrollbarGuard;
+        } else {
+            if (visibleRegion)
+                DeleteObject(visibleRegion);
+            ShowScrollBar(g_hListView, SB_BOTH, FALSE);
+        }
+        SetWindowPos(g_hListView, nullptr, 0, 0, listWidth, listHeight, SWP_NOZORDER | SWP_SHOWWINDOW);
+        RECT workArea{
+            geometry.itemsLeft, 0, geometry.itemsLeft + (std::max)(1, geometry.itemsWidth) + 1, metrics.dockRailHeight
+        };
+        SendMessageW(g_hListView, LVM_SETWORKAREAS, 1, reinterpret_cast<LPARAM>(&workArea));
+        ListView_SetIconSpacing(g_hListView, metrics.dockTileSize + metrics.dockTileGap, metrics.dockRailHeight);
+        ListView_Arrange(g_hListView, LVA_DEFAULT);
+        ATWListViewSelectItem(g_SelectedIndex);
+        SendMessageW(g_hListView, WM_SETREDRAW, TRUE, 0);
+        UpdateDockSearchLayout();
+        InvalidateRect(hWnd, nullptr, FALSE);
+        InvalidateRect(g_hListView, nullptr, FALSE);
+        return;
+    }
+
     const int workWidth = work.right - work.left;
     const int workHeight = work.bottom - work.top;
     const int minimumWidth = MulDiv(520, static_cast<int>(g_SwitcherRenderer->Theme().dpi), 96);
@@ -1643,6 +1845,15 @@ static void LayoutSwitcherWindow(HWND hWnd) {
     InvalidateRect(g_hListView, nullptr, FALSE);
 }
 
+static void UpdateDockSearchLayout() {
+    if (g_Settings.Layout != SwitcherLayout::Dock || !g_hSearchString || !g_SwitcherRenderer || !g_hAltTabWnd)
+        return;
+    // Keep the native edit focused for keyboard/IME behavior, but paint Dock text in
+    // the parent so the caret and child repaint timing never leak into the caption.
+    SetWindowPos(g_hSearchString, nullptr, -2, -2, 1, 1, SWP_NOZORDER | SWP_SHOWWINDOW);
+    HideCaret(g_hSearchString);
+}
+
 static void RebuildSwitcherVisuals(HWND hWnd, UINT dpi) {
     if (!g_SwitcherRenderer)
         g_SwitcherRenderer = std::make_unique<SwitcherRenderer>();
@@ -1702,19 +1913,12 @@ BOOL ATW_OnCreate(HWND hWnd, LPCREATESTRUCT /*lpCreateStruct*/) {
         return FALSE;
     SetWindowSubclass(g_hSearchString, SearchStringSubclassProc, 1, 0);
 
+    const DWORD listStyle =
+        WS_CHILD | WS_VISIBLE | LVS_SHOWSELALWAYS | LVS_SHAREIMAGELISTS | LVS_SINGLESEL
+        | (g_Settings.Layout == SwitcherLayout::Dock ? (LVS_ICON | LVS_ALIGNTOP | LVS_AUTOARRANGE | LVS_NOLABELWRAP)
+                                                     : (LVS_REPORT | LVS_OWNERDRAWFIXED | LVS_NOCOLUMNHEADER));
     g_hListView = CreateWindowExW(
-        0,
-        WC_LISTVIEWW,
-        L"",
-        WS_CHILD | WS_VISIBLE | LVS_REPORT | LVS_SHOWSELALWAYS | LVS_OWNERDRAWFIXED | LVS_NOCOLUMNHEADER,
-        0,
-        0,
-        0,
-        0,
-        hWnd,
-        reinterpret_cast<HMENU>(IDC_LISTVIEW),
-        g_hInstance,
-        nullptr);
+        0, WC_LISTVIEWW, L"", listStyle, 0, 0, 0, 0, hWnd, reinterpret_cast<HMENU>(IDC_LISTVIEW), g_hInstance, nullptr);
     if (!g_hListView)
         return FALSE;
     SetWindowSubclass(g_hListView, ListViewSubclassProc, 1, 0);
@@ -1724,7 +1928,9 @@ BOOL ATW_OnCreate(HWND hWnd, LPCREATESTRUCT /*lpCreateStruct*/) {
     LayoutSwitcherWindow(hWnd);
 
     SetForegroundWindow(hWnd);
-    SetFocus(g_Settings.ShowSearchString ? g_hSearchString : g_hListView);
+    SetFocus(g_hSearchString);
+    if (g_Settings.Layout == SwitcherLayout::Dock)
+        HideCaret(g_hSearchString);
     ATWListViewSelectItem(0);
     SetTimer(hWnd, TIMER_WINDOW_COUNT, TIMER_WINDOW_COUNT_ELAPSE, nullptr);
     return TRUE;
@@ -1849,6 +2055,10 @@ void ATW_OnDestroy(HWND hwnd) {
         RemoveWindowSubclass(g_hSearchString, SearchStringSubclassProc, 1);
     if (g_hListView)
         RemoveWindowSubclass(g_hListView, ListViewSubclassProc, 1);
+    if (g_hListView) {
+        ListView_SetImageList(g_hListView, nullptr, LVSIL_SMALL);
+        ListView_SetImageList(g_hListView, nullptr, LVSIL_NORMAL);
+    }
     if (g_hRowHeightImageList) {
         ImageList_Destroy(std::exchange(g_hRowHeightImageList, nullptr));
     }
@@ -1883,7 +2093,26 @@ void ATW_OnDrawItem(HWND /*hwnd*/, const DRAWITEMSTRUCT* lpDrawItem) {
     }
 }
 
-BOOL ATW_OnNotify(HWND /*hwnd*/, int /*idFrom*/, NMHDR* pnmhdr) {
+LRESULT ATW_OnNotify(HWND /*hwnd*/, int /*idFrom*/, NMHDR* pnmhdr) {
+    if (pnmhdr->hwndFrom == g_hListView && pnmhdr->code == NM_CUSTOMDRAW && g_Settings.Layout == SwitcherLayout::Dock
+        && g_SwitcherRenderer) {
+        auto* draw = reinterpret_cast<NMLVCUSTOMDRAW*>(pnmhdr);
+        if (draw->nmcd.dwDrawStage == CDDS_PREPAINT)
+            return CDRF_NOTIFYITEMDRAW;
+        if (draw->nmcd.dwDrawStage == CDDS_ITEMPREPAINT) {
+            g_SwitcherRenderer->DrawDockItem(
+                g_hListView,
+                draw->nmcd.hdc,
+                static_cast<int>(draw->nmcd.dwItemSpec),
+                g_hLVImageList,
+                g_Settings,
+                g_nLVHotItem,
+                g_IsMouseOverCloseButton,
+                g_rcBtnClose);
+            return CDRF_SKIPDEFAULT;
+        }
+    }
+
     if (pnmhdr->hwndFrom == g_hListView && pnmhdr->code == LVN_HOTTRACK) {
         LPNMLISTVIEW pnmListView = reinterpret_cast<LPNMLISTVIEW>(pnmhdr);
 
@@ -1908,19 +2137,23 @@ BOOL ATW_OnNotify(HWND /*hwnd*/, int /*idFrom*/, NMHDR* pnmhdr) {
         // Compute the hit target for the row currently under the pointer. The
         // rectangle never leaks from the previously hot row.
         if (g_Settings.ShowDeleteButton && pnmListView->iItem >= 0 && g_SwitcherRenderer) {
-            RECT rowRect{};
-            ListView_GetItemRect(g_hListView, pnmListView->iItem, &rowRect, LVIR_BOUNDS);
-            const ThemeMetrics& metrics = g_SwitcherRenderer->Theme().metrics;
-            InflateRect(
-                &rowRect,
-                -MulDiv(4, static_cast<int>(g_SwitcherRenderer->Theme().dpi), 96),
-                -MulDiv(2, static_cast<int>(g_SwitcherRenderer->Theme().dpi), 96));
-            g_rcBtnClose = {
-                rowRect.right - metrics.rowHorizontalPadding - metrics.closeButtonSize,
-                rowRect.top + (rowRect.bottom - rowRect.top - metrics.closeButtonSize) / 2,
-                rowRect.right - metrics.rowHorizontalPadding,
-                rowRect.top + (rowRect.bottom - rowRect.top + metrics.closeButtonSize) / 2,
-            };
+            if (g_Settings.Layout == SwitcherLayout::Dock) {
+                g_rcBtnClose = g_SwitcherRenderer->DockCloseButtonRect(g_hListView, pnmListView->iItem);
+            } else {
+                RECT rowRect{};
+                ListView_GetItemRect(g_hListView, pnmListView->iItem, &rowRect, LVIR_BOUNDS);
+                const ThemeMetrics& metrics = g_SwitcherRenderer->Theme().metrics;
+                InflateRect(
+                    &rowRect,
+                    -MulDiv(4, static_cast<int>(g_SwitcherRenderer->Theme().dpi), 96),
+                    -MulDiv(2, static_cast<int>(g_SwitcherRenderer->Theme().dpi), 96));
+                g_rcBtnClose = {
+                    rowRect.right - metrics.rowHorizontalPadding - metrics.closeButtonSize,
+                    rowRect.top + (rowRect.bottom - rowRect.top - metrics.closeButtonSize) / 2,
+                    rowRect.right - metrics.rowHorizontalPadding,
+                    rowRect.top + (rowRect.bottom - rowRect.top + metrics.closeButtonSize) / 2,
+                };
+            }
             if (g_rcBtnClose.left <= ptClientPos.x && ptClientPos.x <= g_rcBtnClose.right
                 && g_rcBtnClose.top <= ptClientPos.y && ptClientPos.y <= g_rcBtnClose.bottom) {
                 if (!g_IsMouseOverCloseButton) {
@@ -1956,6 +2189,8 @@ BOOL ATW_OnNotify(HWND /*hwnd*/, int /*idFrom*/, NMHDR* pnmhdr) {
                 ListView_GetItemRect(g_hListView, g_nLVHotItem, &rc, LVIR_BOUNDS);
                 InvalidateRect(g_hListView, &rc, FALSE);
             }
+            if (g_Settings.Layout == SwitcherLayout::Dock && g_hAltTabWnd)
+                InvalidateRect(g_hAltTabWnd, nullptr, FALSE);
         }
 
         // Check if the mouse is hovering over an item
@@ -2002,6 +2237,7 @@ BOOL ATW_OnNotify(HWND /*hwnd*/, int /*idFrom*/, NMHDR* pnmhdr) {
                 ATCloseWindow(g_nLVHotItem);
             }
         } else {
+            g_SelectedIndex = ATWListViewGetSelectedItem();
             DestroyAltTabWindow(true);
         }
         return TRUE;

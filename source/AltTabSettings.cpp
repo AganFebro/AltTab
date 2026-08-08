@@ -63,6 +63,9 @@ namespace {
     const wchar_t* WINDOW_WIDTH_PERCENTAGE = L"WindowWidthPercentage";
     const wchar_t* WINDOW_HEIGHT_PERCENTAGE = L"WindowHeightPercentage";
     const wchar_t* SWITCHER_MONITOR = L"SwitcherMonitor";
+    const wchar_t* SWITCHER_LAYOUT = L"SwitcherLayout";
+    const wchar_t* DOCK_POSITION = L"DockPosition";
+    const wchar_t* DOCK_SCALE = L"DockScale";
     const wchar_t* SHOW_SEARCH_STRING = L"ShowSearchString";
     const wchar_t* SHOW_PROCESS_NAME = L"ShowProcessName";
     const wchar_t* SHOW_COL_PROCESSNAME = L"ShowColProcessName"; // Legacy read-only key.
@@ -110,6 +113,17 @@ namespace {
         const BOOL enabled = mode == AppearanceMode::Custom;
         EnableWindow(GetDlgItem(hDlg, IDC_EDIT_WINDOW_TRANSPARENCY), enabled);
         EnableWindow(GetDlgItem(hDlg, IDC_SPIN_WINDOW_TRANSPARENCY), enabled);
+    }
+
+    void UpdateLayoutControls(HWND hDlg, SwitcherLayout layout) {
+        const BOOL list = layout == SwitcherLayout::List;
+        EnableWindow(GetDlgItem(hDlg, IDC_STATIC_WINDOW_HEIGHT), list);
+        EnableWindow(GetDlgItem(hDlg, IDC_EDIT_WINDOW_HEIGHT_PERCENTAGE), list);
+        EnableWindow(GetDlgItem(hDlg, IDC_SPIN_WINDOW_HEIGHT_PERCENTAGE), list);
+        EnableWindow(GetDlgItem(hDlg, IDC_STATIC_DOCK_POSITION), !list);
+        EnableWindow(GetDlgItem(hDlg, IDC_COMBO_DOCK_POSITION), !list);
+        EnableWindow(GetDlgItem(hDlg, IDC_STATIC_DOCK_SCALE), !list);
+        EnableWindow(GetDlgItem(hDlg, IDC_COMBO_DOCK_SCALE), !list);
     }
 
     std::vector<MonitorDescriptor> settingsMonitorOptions;
@@ -169,6 +183,9 @@ AltTabSettings::AltTabSettings() {
  */
 void AltTabSettings::Reset() {
     Appearance = AppearanceMode::System;
+    Layout = SwitcherLayout::Dock;
+    DockPlacement = DockPosition::LowerThird;
+    DockSize = DockScale::Default;
     HKAltTabEnabled = DEFAULT_ALT_TAB_ENABLED;
     HKAltBacktickEnabled = DEFAULT_ALT_BACKTICK_ENABLED;
     HKAltCtrlTabEnabled = DEFAULT_ALT_CTRL_TAB_ENABLED;
@@ -460,6 +477,13 @@ INT_PTR CALLBACK ATSettingsDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARA
             UpdateAppearanceControls(hDlg, static_cast<AppearanceMode>(max(selected, 0)));
             return (INT_PTR)TRUE;
         }
+
+        if (LOWORD(wParam) == IDC_COMBO_SWITCHER_LAYOUT && HIWORD(wParam) == CBN_SELCHANGE) {
+            const int selected = ComboBox_GetCurSel(GetDlgItem(hDlg, IDC_COMBO_SWITCHER_LAYOUT));
+            UpdateLayoutControls(hDlg, static_cast<SwitcherLayout>((std::max)(selected, 0)));
+            EnableWindow(GetDlgItem(hDlg, IDC_BUTTON_APPLY), AreSettingsModified(hDlg));
+            return (INT_PTR)TRUE;
+        }
     } break;
 
         // case WM_NOTIFY: {
@@ -681,6 +705,9 @@ void ATSettingsToFile(const std::wstring& iniFile) {
     WriteSetting(iniFile, GENERAL, WINDOW_WIDTH_PERCENTAGE, g_Settings.WidthPercentage);
     WriteSetting(iniFile, GENERAL, WINDOW_HEIGHT_PERCENTAGE, g_Settings.HeightPercentage);
     WriteSetting(iniFile, GENERAL, SWITCHER_MONITOR, g_Settings.SwitcherMonitor);
+    WriteSetting(iniFile, GENERAL, SWITCHER_LAYOUT, std::wstring(SwitcherLayoutName(g_Settings.Layout)));
+    WriteSetting(iniFile, GENERAL, DOCK_POSITION, std::wstring(DockPositionName(g_Settings.DockPlacement)));
+    WriteSetting(iniFile, GENERAL, DOCK_SCALE, std::wstring(DockScaleName(g_Settings.DockSize)));
     WriteSetting(iniFile, GENERAL, SHOW_SEARCH_STRING, g_Settings.ShowSearchString);
     WriteSetting(iniFile, GENERAL, SHOW_PROCESS_NAME, g_Settings.ShowProcessName);
     WriteSetting(iniFile, GENERAL, CHECK_FOR_UPDATES, g_Settings.CheckForUpdatesOpt);
@@ -709,6 +736,9 @@ void ATLoadSettings() {
     DWORD LVHighlightBackgroundColor = 0;
     std::wstring HKBacktickKeyHex;
     std::wstring appearanceMode;
+    std::wstring switcherLayout;
+    std::wstring dockPosition;
+    std::wstring dockScale;
 
     const bool appearanceKeyPresent = HasSetting(iniFile, APPEARANCE, APPEARANCE_MODE);
     ReadSetting(iniFile, APPEARANCE, APPEARANCE_MODE, L"System", appearanceMode);
@@ -747,6 +777,25 @@ void ATLoadSettings() {
     ReadSetting(iniFile, GENERAL, SWITCHER_MONITOR, AUTOMATIC_SWITCHER_MONITOR.data(), g_Settings.SwitcherMonitor);
     if (IsAutomaticSwitcherMonitor(g_Settings.SwitcherMonitor))
         g_Settings.SwitcherMonitor = AUTOMATIC_SWITCHER_MONITOR;
+
+    const bool layoutKeyPresent = HasSetting(iniFile, GENERAL, SWITCHER_LAYOUT);
+    ReadSetting(iniFile, GENERAL, SWITCHER_LAYOUT, L"Dock", switcherLayout);
+    bool invalidLayout = false;
+    g_Settings.Layout = ResolveSwitcherLayout(switcherLayout, layoutKeyPresent, &invalidLayout);
+    if (invalidLayout)
+        AT_LOG_WARN("Invalid [General] SwitcherLayout=%ls; defaulting to Dock", switcherLayout.c_str());
+
+    ReadSetting(iniFile, GENERAL, DOCK_POSITION, L"LowerThird", dockPosition);
+    bool invalidDockPosition = false;
+    g_Settings.DockPlacement = ResolveDockPosition(dockPosition, &invalidDockPosition);
+    if (invalidDockPosition)
+        AT_LOG_WARN("Invalid [General] DockPosition=%ls; defaulting to LowerThird", dockPosition.c_str());
+
+    ReadSetting(iniFile, GENERAL, DOCK_SCALE, L"Default", dockScale);
+    bool invalidDockScale = false;
+    g_Settings.DockSize = ResolveDockScale(dockScale, &invalidDockScale);
+    if (invalidDockScale)
+        AT_LOG_WARN("Invalid [General] DockScale=%ls; defaulting to Default", dockScale.c_str());
 
     // Clamp numeric values to their valid ranges so a hand-edited (and auto-reloaded)
     // INI cannot produce an unusable (invisible or zero-size) switcher window.
@@ -908,6 +957,12 @@ void ATReadSettingsFromUI(HWND hDlg, AltTabSettings& settings) {
     settings.WidthPercentage = GetDlgItemInt(hDlg, IDC_EDIT_WINDOW_WIDTH_PERCENTAGE, nullptr, FALSE);
     settings.HeightPercentage = GetDlgItemInt(hDlg, IDC_EDIT_WINDOW_HEIGHT_PERCENTAGE, nullptr, FALSE);
     settings.SwitcherMonitor = ReadSwitcherMonitorFromCombo(hDlg);
+    const int layoutIndex = ComboBox_GetCurSel(GetDlgItem(hDlg, IDC_COMBO_SWITCHER_LAYOUT));
+    settings.Layout = static_cast<SwitcherLayout>((std::max)(layoutIndex, 0));
+    const int dockPositionIndex = ComboBox_GetCurSel(GetDlgItem(hDlg, IDC_COMBO_DOCK_POSITION));
+    settings.DockPlacement = static_cast<DockPosition>((std::max)(dockPositionIndex, 0));
+    const int dockScaleIndex = ComboBox_GetCurSel(GetDlgItem(hDlg, IDC_COMBO_DOCK_SCALE));
+    settings.DockSize = static_cast<DockScale>((std::max)(dockScaleIndex, 0));
     settings.PromptTerminateAll = IsDlgButtonChecked(hDlg, IDC_CHECK_PROMPT_TERMINATE_ALL) == BST_CHECKED;
     settings.ShowSearchString = IsDlgButtonChecked(hDlg, IDC_CHECK_SHOW_SEARCH_STRING) == BST_CHECKED;
     settings.ShowProcessName = IsDlgButtonChecked(hDlg, IDC_CHECK_SHOW_PROCESSNAME) == BST_CHECKED;
@@ -968,6 +1023,9 @@ void ATLogSettings(const AltTabSettings& settings) {
     AT_LOG_DEBUG("  WidthPercentage           : [%d]", settings.WidthPercentage);
     AT_LOG_DEBUG("  HeightPercentage          : [%d]", settings.HeightPercentage);
     AT_LOG_DEBUG("  SwitcherMonitor           : [%ls]", settings.SwitcherMonitor.c_str());
+    AT_LOG_DEBUG("  SwitcherLayout            : [%ls]", SwitcherLayoutName(settings.Layout).data());
+    AT_LOG_DEBUG("  DockPosition              : [%ls]", DockPositionName(settings.DockPlacement).data());
+    AT_LOG_DEBUG("  DockScale                 : [%ls]", DockScaleName(settings.DockSize).data());
     AT_LOG_DEBUG("  CheckForUpdatesOpt        : [%s]", WStrToUTF8(settings.CheckForUpdatesOpt).c_str());
     AT_LOG_DEBUG("  PromptTerminateAll        : [%s]", BOOL_TO_CSTR(settings.PromptTerminateAll));
     AT_LOG_DEBUG("  ShowSearchString          : [%s]", BOOL_TO_CSTR(settings.ShowSearchString));
@@ -1006,7 +1064,8 @@ bool AreSettingsModified(HWND hDlg) {
         || settings.Transparency != g_Settings.Transparency || settings.WidthPercentage != g_Settings.WidthPercentage
         || settings.HeightPercentage != g_Settings.HeightPercentage
         || !SameSwitcherMonitorSetting(settings.SwitcherMonitor, g_Settings.SwitcherMonitor)
-        || settings.CheckForUpdatesOpt != g_Settings.CheckForUpdatesOpt
+        || settings.Layout != g_Settings.Layout || settings.DockPlacement != g_Settings.DockPlacement
+        || settings.DockSize != g_Settings.DockSize || settings.CheckForUpdatesOpt != g_Settings.CheckForUpdatesOpt
         || settings.PromptTerminateAll != g_Settings.PromptTerminateAll
         || settings.ShowSearchString != g_Settings.ShowSearchString
         || settings.ShowProcessName != g_Settings.ShowProcessName
@@ -1042,6 +1101,18 @@ std::pair<std::wstring, std::wstring> AltTabSettings::IsValid(bool& valid) {
     if (Appearance < AppearanceMode::System || Appearance > AppearanceMode::Custom) {
         valid = false;
         return { L"Invalid Appearance", L"Theme mode must be System, Light, Dark, or Custom." };
+    }
+    if (Layout < SwitcherLayout::List || Layout > SwitcherLayout::Dock) {
+        valid = false;
+        return { L"Invalid Switcher Layout", L"Switcher layout must be List or Dock." };
+    }
+    if (DockPlacement < DockPosition::LowerThird || DockPlacement > DockPosition::Center) {
+        valid = false;
+        return { L"Invalid Dock Position", L"Dock position must be LowerThird or Center." };
+    }
+    if (DockSize < DockScale::Default || DockSize > DockScale::ExtraSmall) {
+        valid = false;
+        return { L"Invalid Dock Scale", L"Dock scale must be Default, Small, or ExtraSmall." };
     }
     if (SwitcherMonitor.empty()) {
         valid = false;
@@ -1191,6 +1262,26 @@ void ATSettingsInitDialog(HWND hDlg, const AltTabSettings& settings) {
     }
     ComboBox_SetCurSel(hAppearance, static_cast<int>(settings.Appearance));
     UpdateAppearanceControls(hDlg, settings.Appearance);
+
+    HWND hLayout = GetDlgItem(hDlg, IDC_COMBO_SWITCHER_LAYOUT);
+    ComboBox_ResetContent(hLayout);
+    ComboBox_AddString(hLayout, L"Vertical list");
+    ComboBox_AddString(hLayout, L"Horizontal dock");
+    ComboBox_SetCurSel(hLayout, static_cast<int>(settings.Layout));
+
+    HWND hDockPosition = GetDlgItem(hDlg, IDC_COMBO_DOCK_POSITION);
+    ComboBox_ResetContent(hDockPosition);
+    ComboBox_AddString(hDockPosition, L"Lower third");
+    ComboBox_AddString(hDockPosition, L"Center");
+    ComboBox_SetCurSel(hDockPosition, static_cast<int>(settings.DockPlacement));
+
+    HWND hDockScale = GetDlgItem(hDlg, IDC_COMBO_DOCK_SCALE);
+    ComboBox_ResetContent(hDockScale);
+    ComboBox_AddString(hDockScale, L"Default");
+    ComboBox_AddString(hDockScale, L"Small");
+    ComboBox_AddString(hDockScale, L"Extra small");
+    ComboBox_SetCurSel(hDockScale, static_cast<int>(settings.DockSize));
+    UpdateLayoutControls(hDlg, settings.Layout);
 
     RefreshSwitcherMonitorCombo(hDlg, settings.SwitcherMonitor);
 

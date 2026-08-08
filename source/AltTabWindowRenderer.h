@@ -1,5 +1,6 @@
 #pragma once
 
+#include "AltTabLayout.h"
 #include "AltTabTheme.h"
 
 #include <CommCtrl.h>
@@ -20,7 +21,7 @@ public:
     void Rebuild(HWND owner, const AltTabSettings& settings, UINT dpi);
     void Reset();
 
-    void PaintPanel(HWND owner, HDC hdc, const RECT& client, bool showSearch) const;
+    void PaintPanel(HWND owner, HDC hdc, const RECT& client, bool showSearch, SwitcherLayout layout) const;
     bool DrawListViewRow(
         HWND listView,
         const DRAWITEMSTRUCT& drawItem,
@@ -29,6 +30,23 @@ public:
         int hotRow,
         bool closeHovered,
         RECT& closeHitRect) const;
+    bool DrawDockItem(
+        HWND listView,
+        HDC hdc,
+        int itemIndex,
+        HIMAGELIST icons,
+        const AltTabSettings& settings,
+        int hotItem,
+        bool closeHovered,
+        RECT& closeHitRect) const;
+    void DrawDockCaption(
+        HDC hdc,
+        const RECT& rect,
+        const AltTabWindowData* window,
+        const AltTabSettings& settings,
+        const std::wstring& searchText,
+        int matchCount) const;
+    RECT DockCloseButtonRect(HWND listView, int itemIndex) const;
 
     const ThemeSnapshot& Theme() const {
         return theme_;

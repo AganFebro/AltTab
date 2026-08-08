@@ -63,6 +63,12 @@
 #define IDC_GROUP_BACKTICK              1040
 #define IDC_GROUPBOX_BACKTICK           1040
 #define IDC_COMBO_SWITCHER_MONITOR      1041
+#define IDC_COMBO_SWITCHER_LAYOUT       1042
+#define IDC_COMBO_DOCK_POSITION         1043
+#define IDC_STATIC_WINDOW_HEIGHT        1044
+#define IDC_STATIC_DOCK_POSITION        1045
+#define IDC_COMBO_DOCK_SCALE            1046
+#define IDC_STATIC_DOCK_SCALE           1047
 #define ID_TRAYCONTEXTMENU_ABOUTALTTAB  32771
 #define ID_TRAYCONTEXTMENU_README       32772
 #define ID_TRAYCONTEXTMENU_HELP         32773
@@ -98,7 +104,7 @@
 #define _APS_NO_MFC                     1
 #define _APS_NEXT_RESOURCE_VALUE        136
 #define _APS_NEXT_COMMAND_VALUE         32801
-#define _APS_NEXT_CONTROL_VALUE         1042
+#define _APS_NEXT_CONTROL_VALUE         1048
 #define _APS_NEXT_SYMED_VALUE           110
 #endif
 #endif

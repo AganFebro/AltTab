@@ -24,6 +24,15 @@ Known Issues
   > Added documented DWM dark mode, rounded-corner, border-color, and transient
     backdrop requests with a solid Windows 10 fallback.
 
++ Added horizontal Dock and vertical List switcher layouts.
+  > Fresh settings and Reset use Dock; legacy INIs without SwitcherLayout keep
+    the List layout.
+  > Dock provides centered icon tiles, an attached title/process caption,
+    hidden-scrollbar horizontal overflow, lower-third/center placement, and
+    Default, Small, and Extra small Dock-only size presets.
+  > Search text and match count are painted in the caption while the native
+    EDIT control continues handling keyboard and IME input.
+
 + Added System, Light, Dark, and Custom appearance modes.
   > System is the fresh-install and Reset default.
   > Existing INIs without [Appearance] Mode migrate to Custom and keep legacy
@@ -44,7 +53,8 @@ Known Issues
   read-only compatibility fallback. Column headers are no longer displayed.
 
 + Added standard-library assertion tests for appearance parsing/migration,
-  palettes, accent blending/contrast, DPI scaling, and process-name migration.
+  palettes, accent blending/contrast, DPI scaling, layout migration, Dock
+  geometry/scaling, monitor placement, and process-name migration.
 
 - Removed the gradient row renderer, close-button PNG resources, GDI+ startup,
   and the GDI+/Msimg32 link dependencies.
@@ -52,6 +62,8 @@ Known Issues
   switcher openings.
 - Hid native ListView scrollbars while preserving wheel and keyboard scrolling.
 - Fixed foreground handoff when selecting normal or minimized windows.
+- Fixed Dock selection flicker, idle caret leakage, short-row alignment, and a
+  final icon wrapping invisibly into a clipped second row.
 
 
 2026.1.0.0 new features and bug fixes

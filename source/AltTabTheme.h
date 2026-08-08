@@ -40,6 +40,13 @@ struct ThemeMetrics {
     int iconSize{};
     int rowHorizontalPadding{};
     int closeButtonSize{};
+    int dockRailHeight{};
+    int dockIconSize{};
+    int dockTileSize{};
+    int dockTileGap{};
+    int dockCaptionHeight{};
+    int dockCloseButtonSize{};
+    int dockMinimumWidth{};
     int menuItemHeight{};
     int menuSeparatorHeight{};
 };
@@ -78,7 +85,7 @@ bool IsHighContrastMode();
 COLORREF GetWindowsAccentColor();
 COLORREF BlendThemeColors(COLORREF foreground, COLORREF background, double foregroundAmount);
 double ThemeContrastRatio(COLORREF first, COLORREF second);
-ThemeMetrics ResolveThemeMetrics(UINT dpi);
+ThemeMetrics ResolveThemeMetrics(UINT dpi, int dockScalePercent = 100);
 ThemePalette ResolveThemePalette(
     AppearanceMode mode,
     bool systemDark,

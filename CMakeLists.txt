@@ -31,6 +31,7 @@ configure_file(
 
 set(ALTTAB_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/source")
 set(ALTTAB_COMMON_SOURCES
+    "${ALTTAB_SOURCE_DIR}/AltTabLayout.cpp"
     "${ALTTAB_SOURCE_DIR}/AltTabMonitor.cpp"
     "${ALTTAB_SOURCE_DIR}/AltTabSettings.cpp"
     "${ALTTAB_SOURCE_DIR}/AltTabTheme.cpp"
@@ -45,6 +46,7 @@ set(ALTTAB_COMMON_SOURCES
 )
 set(ALTTAB_COMMON_HEADERS
     "${ALTTAB_SOURCE_DIR}/AltTab.h"
+    "${ALTTAB_SOURCE_DIR}/AltTabLayout.h"
     "${ALTTAB_SOURCE_DIR}/AltTabMonitor.h"
     "${ALTTAB_SOURCE_DIR}/AltTabSettings.h"
     "${ALTTAB_SOURCE_DIR}/AltTabTheme.h"
@@ -161,8 +163,20 @@ if(ALTTAB_BUILD_TESTER)
 endif()
 
 if(BUILD_TESTING)
+    add_executable(AltTabLayoutTests
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/AltTabLayoutTests.cpp"
+        "${ALTTAB_SOURCE_DIR}/AltTabLayout.cpp"
+        "${ALTTAB_SOURCE_DIR}/AltTabLayout.h"
+    )
+    target_include_directories(AltTabLayoutTests PRIVATE "${ALTTAB_SOURCE_DIR}")
+    target_compile_definitions(AltTabLayoutTests PRIVATE UNICODE _UNICODE _CRT_SECURE_NO_WARNINGS)
+    target_compile_options(AltTabLayoutTests PRIVATE /EHsc /W4 /permissive-)
+    set_target_properties(AltTabLayoutTests PROPERTIES LINKER_TYPE LLD)
+    add_test(NAME AltTabLayoutTests COMMAND AltTabLayoutTests)
+
     add_executable(AltTabThemeTests
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/AltTabThemeTests.cpp"
+        "${ALTTAB_SOURCE_DIR}/AltTabLayout.cpp"
         "${ALTTAB_SOURCE_DIR}/AltTabTheme.cpp"
         "${ALTTAB_SOURCE_DIR}/AltTabTheme.h"
     )

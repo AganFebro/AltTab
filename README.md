@@ -86,6 +86,23 @@ Mode=System
 `ShowProcessName` replaces `ShowColProcessName`. The old key is still accepted when the new key is absent, but AltTab
 saves only the new name.
 
+## Switcher layout
+
+Fresh settings and Reset use the horizontal `Dock` layout. It presents one icon per window in a centered rail with an
+attached title/process caption, horizontal overflow without a visible scrollbar, and inline search text and result
+count. The original `List` layout remains available; existing INIs without `SwitcherLayout` continue using it.
+
+Dock mode supports `Default`, `Small`, and `Extra small` size presets. The setting scales Dock icons, tiles, caption,
+fonts, and overall geometry only; List mode is unchanged. `Dock position` selects lower-third or centered placement,
+while `Window Width (%)` remains the maximum Dock width.
+
+```ini
+[General]
+SwitcherLayout=Dock
+DockPosition=LowerThird
+DockScale=Default
+```
+
 ## Monitor placement
 
 The Settings dialog's `Switcher monitor` dropdown controls where the switcher opens. `Automatic (foreground
@@ -106,6 +123,7 @@ SwitcherMonitor=Automatic
 * Terminate a process or all processes either normally or forcefully using keyboard shortcuts.
 * Hide or unhide windows.
 * Native, DPI-aware light/dark switcher with rounded search and selection surfaces.
+* Horizontal icon Dock and vertical List layouts, with three Dock-only size presets.
 * Themed native tray and window menus with keyboard navigation and submenu behavior intact.
 * INI configuration for theme mode, Custom-mode fonts/colors/transparency, width, height, and behavior.
 
@@ -115,8 +133,9 @@ SwitcherMonitor=Automatic
 
 ## UI implementation
 
-The switcher keeps native `EDIT` and `SysListView32` controls for caret/IME, accessibility, scrolling, and input. A small
-GDI renderer owns its fonts and brushes and paints the modern surfaces, rows, match emphasis, and vector close glyph.
+The switcher keeps native `EDIT` and `SysListView32` controls for IME, accessibility, scrolling, selection, and input.
+The Dock hides the input caret and paints its query in the caption surface. A small GDI renderer owns its fonts and
+brushes and paints the modern surfaces, rows/tiles, match emphasis, and vector close glyph.
 Popup menus remain native `HMENU` trees and use a shared owner-draw session, preserving native focus, dismissal, keyboard
 navigation, and command dispatch.
 

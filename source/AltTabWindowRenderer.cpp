@@ -121,9 +121,11 @@ void SwitcherRenderer::Rebuild(HWND owner, const AltTabSettings& settings, UINT 
     const bool titleItalic = custom && settings.LVFontStyle.find(L"italic") != std::wstring::npos;
     const int searchWeight = custom && settings.SSFontStyle.find(L"bold") != std::wstring::npos ? FW_BOLD : FW_NORMAL;
     const int titleWeight = custom && settings.LVFontStyle.find(L"bold") != std::wstring::npos ? FW_BOLD : FW_SEMIBOLD;
-    const int searchPoints = custom ? settings.SSFontSize : 11;
-    const int titlePoints = custom ? settings.LVFontSize : 11;
-    const int subtitlePoints = custom ? (std::max)(8, settings.LVFontSize - 2) : 9;
+    const int dockFontScale = settings.Layout == SwitcherLayout::Dock ? DockScalePercent(settings.DockSize) : 100;
+    const int searchPoints = (std::max)(7, MulDiv(custom ? settings.SSFontSize : 11, dockFontScale, 100));
+    const int titlePoints = (std::max)(7, MulDiv(custom ? settings.LVFontSize : 11, dockFontScale, 100));
+    const int subtitlePoints =
+        (std::max)(7, MulDiv(custom ? (std::max)(8, settings.LVFontSize - 2) : 9, dockFontScale, 100));
 
     searchFont_ = CreateThemeFont(theme_.searchFontName, searchPoints, searchWeight, searchItalic, theme_.dpi);
     titleFont_ = CreateThemeFont(theme_.titleFontName, titlePoints, titleWeight, titleItalic, theme_.dpi);
@@ -140,8 +142,18 @@ void SwitcherRenderer::Rebuild(HWND owner, const AltTabSettings& settings, UINT 
     dangerBrush_ = CreateSolidBrush(BlendThemeColors(theme_.palette.danger, theme_.palette.panel, 0.26));
 }
 
-void SwitcherRenderer::PaintPanel(HWND, HDC hdc, const RECT& client, bool showSearch) const {
+void SwitcherRenderer::PaintPanel(HWND, HDC hdc, const RECT& client, bool showSearch, SwitcherLayout layout) const {
     FillRect(hdc, &client, panelBrush_);
+    if (layout == SwitcherLayout::Dock) {
+        RECT caption{
+            0,
+            (std::min)(static_cast<int>(client.bottom), theme_.metrics.dockRailHeight),
+            client.right,
+            client.bottom,
+        };
+        FillRect(hdc, &caption, searchBrush_);
+        return;
+    }
     if (!showSearch)
         return;
 
@@ -166,6 +178,173 @@ void SwitcherRenderer::PaintPanel(HWND, HDC hdc, const RECT& client, bool showSe
     SelectObject(hdc, oldBrush);
     SelectObject(hdc, oldPen);
     DeleteObject(pen);
+}
+
+RECT SwitcherRenderer::DockCloseButtonRect(HWND listView, int itemIndex) const {
+    RECT icon{};
+    if (!listView || itemIndex < 0 || !ListView_GetItemRect(listView, itemIndex, &icon, LVIR_ICON))
+        return {};
+    const int tileLeft = (icon.left + icon.right - theme_.metrics.dockTileSize) / 2;
+    const int tileTop = (theme_.metrics.dockRailHeight - theme_.metrics.dockTileSize) / 2;
+    return {
+        tileLeft + theme_.metrics.dockTileSize - theme_.metrics.dockCloseButtonSize,
+        tileTop,
+        tileLeft + theme_.metrics.dockTileSize,
+        tileTop + theme_.metrics.dockCloseButtonSize,
+    };
+}
+
+bool SwitcherRenderer::DrawDockItem(
+    HWND listView,
+    HDC hdc,
+    int itemIndex,
+    HIMAGELIST icons,
+    const AltTabSettings& settings,
+    int hotItem,
+    bool closeHovered,
+    RECT& closeHitRect) const {
+    LVITEMW item{};
+    item.mask = LVIF_PARAM | LVIF_IMAGE;
+    item.iItem = itemIndex;
+    if (!ListView_GetItem(listView, &item))
+        return false;
+    const auto* window = reinterpret_cast<const AltTabWindowData*>(item.lParam);
+    if (!window)
+        return false;
+
+    RECT icon{};
+    if (!ListView_GetItemRect(listView, itemIndex, &icon, LVIR_ICON))
+        return false;
+    RECT tile{
+        (icon.left + icon.right - theme_.metrics.dockTileSize) / 2,
+        (theme_.metrics.dockRailHeight - theme_.metrics.dockTileSize) / 2,
+        (icon.left + icon.right + theme_.metrics.dockTileSize) / 2,
+        (theme_.metrics.dockRailHeight + theme_.metrics.dockTileSize) / 2,
+    };
+    const bool selected = (ListView_GetItemState(listView, itemIndex, LVIS_SELECTED) & LVIS_SELECTED) != 0;
+    const bool hot = itemIndex == hotItem;
+    if (window->IsBeingClosed)
+        FillRounded(hdc, tile, theme_.metrics.surfaceCornerRadius, dangerBrush_);
+    else if (selected)
+        FillRounded(hdc, tile, theme_.metrics.surfaceCornerRadius, selectedBrush_);
+    else if (hot && settings.ShowHighlightRect)
+        FillRounded(hdc, tile, theme_.metrics.surfaceCornerRadius, hoverBrush_);
+
+    if (icons && item.iImage >= 0) {
+        const int iconX = (tile.left + tile.right - theme_.metrics.dockIconSize) / 2;
+        const int iconY = (tile.top + tile.bottom - theme_.metrics.dockIconSize) / 2;
+        ImageList_DrawEx(
+            icons,
+            item.iImage,
+            hdc,
+            iconX,
+            iconY,
+            theme_.metrics.dockIconSize,
+            theme_.metrics.dockIconSize,
+            CLR_NONE,
+            CLR_NONE,
+            ILD_TRANSPARENT);
+    }
+
+    if (selected) {
+        const int indicatorWidth = MulDiv(16, static_cast<int>(theme_.dpi), 96);
+        const int indicatorHeight = (std::max)(2, MulDiv(3, static_cast<int>(theme_.dpi), 96));
+        RECT indicator{
+            (tile.left + tile.right - indicatorWidth) / 2,
+            tile.bottom - indicatorHeight - MulDiv(2, static_cast<int>(theme_.dpi), 96),
+            (tile.left + tile.right + indicatorWidth) / 2,
+            tile.bottom - MulDiv(2, static_cast<int>(theme_.dpi), 96),
+        };
+        HBRUSH accent = CreateSolidBrush(theme_.palette.accent);
+        FillRounded(hdc, indicator, indicatorHeight, accent);
+        DeleteObject(accent);
+    }
+
+    if (settings.ShowDeleteButton && hot) {
+        closeHitRect = DockCloseButtonRect(listView, itemIndex);
+        RECT closeSurface = closeHitRect;
+        InflateRect(
+            &closeSurface, -MulDiv(2, static_cast<int>(theme_.dpi), 96), -MulDiv(2, static_cast<int>(theme_.dpi), 96));
+        if (closeHovered)
+            FillRounded(hdc, closeSurface, theme_.metrics.surfaceCornerRadius, hoverBrush_);
+        const int inset = theme_.metrics.dockCloseButtonSize / 3;
+        HPEN pen = CreatePen(
+            PS_SOLID,
+            (std::max)(1, MulDiv(2, static_cast<int>(theme_.dpi), 96)),
+            window->IsBeingClosed ? theme_.palette.danger : theme_.palette.secondaryText);
+        HGDIOBJ oldPen = SelectObject(hdc, pen);
+        MoveToEx(hdc, closeHitRect.left + inset, closeHitRect.top + inset, nullptr);
+        LineTo(hdc, closeHitRect.right - inset, closeHitRect.bottom - inset);
+        MoveToEx(hdc, closeHitRect.right - inset, closeHitRect.top + inset, nullptr);
+        LineTo(hdc, closeHitRect.left + inset, closeHitRect.bottom - inset);
+        SelectObject(hdc, oldPen);
+        DeleteObject(pen);
+    }
+    return true;
+}
+
+void SwitcherRenderer::DrawDockCaption(
+    HDC hdc,
+    const RECT& rect,
+    const AltTabWindowData* window,
+    const AltTabSettings& settings,
+    const std::wstring& searchText,
+    int matchCount) const {
+    if (rect.right <= rect.left || rect.bottom <= rect.top)
+        return;
+    SetBkMode(hdc, TRANSPARENT);
+    const int padding = theme_.metrics.panelPadding;
+    RECT content{ rect.left + padding, rect.top, rect.right - padding, rect.bottom };
+
+    if (!searchText.empty() && settings.ShowSearchString) {
+        const std::wstring count = std::to_wstring(matchCount) + (matchCount == 1 ? L" match" : L" matches");
+        HGDIOBJ oldFont = SelectObject(hdc, subtitleFont_);
+        SIZE countSize{};
+        GetTextExtentPoint32W(hdc, count.c_str(), static_cast<int>(count.size()), &countSize);
+        SetTextColor(hdc, theme_.palette.secondaryText);
+        RECT countRect{ content.right - countSize.cx, content.top, content.right, content.bottom };
+        DrawTextW(hdc, count.c_str(), -1, &countRect, DT_RIGHT | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX);
+
+        SelectObject(hdc, searchFont_);
+        const int gap = theme_.metrics.panelPadding;
+        const int queryWidth = (std::max)(0, static_cast<int>(countRect.left - content.left) - gap);
+        std::wstring query = Ellipsize(hdc, searchText, queryWidth);
+        RECT queryRect{ content.left, content.top, countRect.left - gap, content.bottom };
+        SetTextColor(hdc, theme_.palette.primaryText);
+        DrawTextW(hdc, query.c_str(), -1, &queryRect, DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX);
+        SelectObject(hdc, oldFont);
+        return;
+    }
+
+    if (!window)
+        return;
+    std::wstring title = window->Title;
+    if (window->IsConflictProcess)
+        title += L"  [v" + window->Version + L"]";
+    std::wstring process = settings.ShowProcessName ? L" \u2014 " + window->ProcessName : L"";
+    const int available = content.right - content.left;
+
+    HGDIOBJ oldFont = SelectObject(hdc, subtitleFont_);
+    process = Ellipsize(hdc, process, available / 3);
+    SIZE processSize{};
+    GetTextExtentPoint32W(hdc, process.c_str(), static_cast<int>(process.size()), &processSize);
+
+    SelectObject(hdc, window->TitleHighlights.empty() ? titleFont_ : titleMatchFont_);
+    title = Ellipsize(hdc, title, available - processSize.cx);
+    SIZE titleSize{};
+    GetTextExtentPoint32W(hdc, title.c_str(), static_cast<int>(title.size()), &titleSize);
+    int x = content.left + (available - titleSize.cx - processSize.cx) / 2;
+    RECT titleRect{ x, content.top, x + titleSize.cx, content.bottom };
+    SetTextColor(hdc, window->TitleHighlights.empty() ? theme_.palette.primaryText : theme_.palette.match);
+    DrawTextW(hdc, title.c_str(), -1, &titleRect, DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX);
+
+    if (!process.empty()) {
+        SelectObject(hdc, subtitleFont_);
+        RECT processRect{ titleRect.right, content.top, titleRect.right + processSize.cx, content.bottom };
+        SetTextColor(hdc, theme_.palette.secondaryText);
+        DrawTextW(hdc, process.c_str(), -1, &processRect, DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX);
+    }
+    SelectObject(hdc, oldFont);
 }
 
 void SwitcherRenderer::DrawHighlightedText(

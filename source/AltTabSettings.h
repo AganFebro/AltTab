@@ -4,6 +4,7 @@
 #include <string>
 #include <wtypes.h>
 #include <wingdi.h>
+#include "AltTabLayout.h"
 #include "AltTabMonitor.h"
 #include "AltTabTheme.h"
 
@@ -76,6 +77,9 @@ using StringList = std::vector<std::wstring>;
  */
 struct AltTabSettings {
     AppearanceMode Appearance; // System, Light, Dark, or legacy-compatible Custom
+    SwitcherLayout Layout;     // Vertical list or horizontal dock
+    DockPosition DockPlacement;
+    DockScale DockSize;
     // ----------------------------------------------------------------------------
     // Hotkeys
     // ----------------------------------------------------------------------------
