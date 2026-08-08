@@ -1,0 +1,273 @@
+#include "PreCompile.h"
+#include "CheckForUpdates.h"
+#include <string>
+#include "Logger.h"
+#include "Utils.h"
+
+#include <wininet.h>
+#include "version.h"
+#include <WinUser.h>
+#include "resource.h"
+#include <shellapi.h>
+#include <format>
+#include <chrono>
+#include <ctime>
+#include <fstream>
+#include "AltTabSettings.h"
+#include <filesystem>
+#include <regex>
+
+struct CFU_Info {
+    std::string CurrentVersion;
+    std::string UpdateVersion;
+    std::string Changes;
+} g_UpdatesInfo;
+
+
+INT_PTR CALLBACK ATCheckForUpdatesDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
+std::chrono::system_clock::time_point ReadLastCheckForUpdatesTS();
+void        WriteCheckForUpdatesTS(const std::chrono::system_clock::time_point& timestamp);
+
+// Function to compare version strings
+int CompareVersions(const std::string& updateVersion, const std::string& currentVersion) {
+    // Return 1 if v1 > v2, -1 if v1 < v2, and 0 if v1 == v2
+    auto uv = Split(updateVersion , ".");
+    auto cv = Split(currentVersion, ".");
+    const size_t count = (std::min)(uv.size(), cv.size());
+    for (size_t i = 0; i < count; ++i) {
+        int u = 0, c = 0;
+        try {
+            u = std::stoi(uv[i]);
+            c = std::stoi(cv[i]);
+        } catch (...) {
+            // Non-numeric or out-of-range segment; treat this component as equal.
+            continue;
+        }
+        if (u > c) return 1;
+        if (u < c) return -1;
+    }
+    // All shared components are equal; the version with more components is newer.
+    if (uv.size() > cv.size()) return 1;
+    if (uv.size() < cv.size()) return -1;
+    return 0;
+}
+
+std::wstring GetLastErrorEx() {
+    // Get the last error code
+    DWORD errorCode = GetLastError();
+
+    // Get the error message
+    LPVOID errorMessage;
+    FormatMessage(
+        FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM,
+        nullptr,
+        errorCode,
+        0,
+        reinterpret_cast<LPWSTR>(&errorMessage),
+        0,
+        nullptr);
+    if (!errorMessage)
+        return L"";
+    std::wstring ret = reinterpret_cast<LPCWSTR>(errorMessage);
+    LocalFree(errorMessage);
+    AT_LOG_ERROR("  Error Code   : %d", errorCode);
+    AT_LOG_ERROR("  Error Message: %s", WStrToUTF8(ret).c_str());
+    return ret;
+}
+
+// Function to check for updates from a URL using Windows API
+void CheckForUpdates(const bool quiteMode) {
+    AT_LOG_TRACE;
+    // Initialize WinINet
+    HINTERNET hInternet = InternetOpen(L"Sample WinINet", INTERNET_OPEN_TYPE_DIRECT, nullptr, nullptr, 0);
+    if (!hInternet) {
+        AT_LOG_ERROR("Error initializing WinINet");
+        GetLastErrorEx();
+        return;
+    }
+
+    // Open a URL
+    HINTERNET hConnect = InternetOpenUrl(hInternet, AT_UPDATE_FILE_URL, nullptr, 0, INTERNET_FLAG_RELOAD, 0);
+    if (!hConnect) {
+        AT_LOG_ERROR("Error opening URL with WinINet");
+        if (!quiteMode) {
+            std::wstring info = std::format(L"Failed to download file [{}], please check again.", AT_UPDATE_FILE_URL);
+            MessageBoxW(nullptr, info.c_str(), AT_PRODUCT_NAMEW, MB_OK | MB_ICONERROR | MB_TOPMOST);
+        }
+        GetLastErrorEx();
+        InternetCloseHandle(hInternet);
+        return;
+    }
+
+    // Read and print the response content
+    char buffer[1024] = { 0 };
+    DWORD bytesRead;
+    std::string contents;
+    while (InternetReadFile(hConnect, buffer, sizeof(buffer), &bytesRead) && bytesRead > 0) {
+        // Append exactly the bytes read: the buffer is not guaranteed to be
+        // NUL-terminated when InternetReadFile fills it completely.
+        contents.append(buffer, bytesRead);
+    }
+
+    // Close handles
+    InternetCloseHandle(hConnect);
+    InternetCloseHandle(hInternet);
+
+    // Compare versions
+    std::string currentVersion = AT_VERSION_TEXT;
+    auto remainingLines        = Split(contents, "\n");
+    if (remainingLines.size() < 2) {
+        AT_LOG_ERROR("Invalid update response: expected at least 2 lines, got %zu.", remainingLines.size());
+        if (!quiteMode) {
+            const std::wstring info = std::format(L"Failed to download file [{}], please check again.", AT_UPDATE_FILE_URL);
+            MessageBoxW(nullptr, info.c_str(), AT_PRODUCT_NAMEW, MB_OK | MB_ICONERROR | MB_TOPMOST);
+        }
+        return;
+    }
+    std::string updateVersion  = Trim(remainingLines[0]);
+    std::string installerName  = Trim(remainingLines[1]);
+    std::string latestChanges;
+    for (size_t i = 2; i < remainingLines.size(); i++) {
+        latestChanges += remainingLines[i] + "\n";
+    }
+
+    AT_LOG_INFO("Current Version: %s", currentVersion.c_str());
+    AT_LOG_INFO("Update Version : %s", updateVersion.c_str());
+
+    auto IsValidVersion = [](const std::string& version) {
+        // Define a regex pattern for a version number
+        std::regex versionPattern(R"(\b\d+\.\d+\.\d+\.\d+\b)");
+
+        // Use std::regex_match to check if the entire string matches the pattern
+        return std::regex_match(version, versionPattern);
+    };
+
+    if (!IsValidVersion(updateVersion)) {
+        AT_LOG_ERROR("Invalid update version: %s, please check again!", updateVersion.c_str());
+        if (!quiteMode) {
+            const std::string info = std::format("Invalid update version: {}", updateVersion);
+            MessageBoxA(nullptr, info.c_str(), AT_PRODUCT_NAMEA, MB_OK | MB_ICONERROR | MB_TOPMOST);
+        }
+        return;
+    }
+
+    if (CompareVersions(updateVersion, currentVersion) > 0) {
+        AT_LOG_INFO("Update available!");
+        AT_LOG_INFO("Latest Version: %s", updateVersion.c_str());
+        g_UpdatesInfo.CurrentVersion = currentVersion;
+        g_UpdatesInfo.UpdateVersion  = updateVersion;
+        g_UpdatesInfo.Changes        = latestChanges;
+        DialogBoxW(g_hInstance, MAKEINTRESOURCE(IDD_CHECK_FOR_UPDATES), nullptr, ATCheckForUpdatesDlgProc);
+    } else {
+        const std::string info = std::format(
+            "You are using the latest version of {}.\n"
+            "    - CurrentVersion: {}\n"
+            "    - UpdateVersion: {}",
+            AT_PRODUCT_NAMEA,
+            currentVersion,
+            updateVersion);
+        if (quiteMode) {
+            AT_LOG_INFO(info.c_str());
+        } else {
+            MessageBoxA(nullptr, info.c_str(), AT_PRODUCT_NAMEA, MB_OK | MB_ICONINFORMATION | MB_TOPMOST);
+        }
+    }
+}
+
+INT_PTR CALLBACK ATCheckForUpdatesDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
+    UNREFERENCED_PARAMETER(lParam);
+    switch (message)
+    {
+    case WM_INITDIALOG: {
+        HICON hIcon = LoadIcon(g_hInstance, MAKEINTRESOURCE(IDI_ALTTAB));
+        SendMessageW(hDlg, WM_SETICON, ICON_SMALL, (LPARAM)hIcon);
+        SendMessageW(hDlg, WM_SETICON, ICON_BIG, (LPARAM)hIcon);
+
+        // Center the dialog on the screen
+        int screenWidth  = GetSystemMetrics(SM_CXSCREEN);
+        int screenHeight = GetSystemMetrics(SM_CYSCREEN);
+        RECT dlgRect;
+        GetWindowRect(hDlg, &dlgRect);
+
+        int dlgWidth  = dlgRect.right - dlgRect.left;
+        int dlgHeight = dlgRect.bottom - dlgRect.top;
+
+        int posX = (screenWidth  - dlgWidth ) / 2;
+        int posY = (screenHeight - dlgHeight) / 2;
+
+        SetWindowPos(hDlg, HWND_TOP, posX, posY, 0, 0, SWP_NOSIZE);
+
+        // Set the dialog as an app window, otherwise not displayed in task bar
+        SetWindowLong(hDlg, GWL_EXSTYLE, GetWindowLong(hDlg, GWL_EXSTYLE) | WS_EX_APPWINDOW);
+
+        HFONT hFont = CreateFontW(14, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+                                  DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                                  DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Lucida Console");
+ 
+        SendMessageW(GetDlgItem(hDlg, IDC_EDIT_CFU_CHANGES          ), WM_SETFONT, (WPARAM)hFont, TRUE);
+        SendMessageW(GetDlgItem(hDlg, IDC_STATIC_CFU_CURRENT_VERSION), WM_SETFONT, (WPARAM)hFont, TRUE);
+        SendMessageW(GetDlgItem(hDlg, IDC_STATIC_CFU_UPDATE_VERSION ), WM_SETFONT, (WPARAM)hFont, TRUE);
+        SendMessageW(GetDlgItem(hDlg, IDC_STATIC_1                  ), WM_SETFONT, (WPARAM)hFont, TRUE);
+        SendMessageW(GetDlgItem(hDlg, IDC_STATIC_2                  ), WM_SETFONT, (WPARAM)hFont, TRUE);
+        SendMessageW(GetDlgItem(hDlg, IDC_STATIC_3                  ), WM_SETFONT, (WPARAM)hFont, TRUE);
+
+        SetDlgItemTextA(hDlg, IDC_STATIC_CFU_CURRENT_VERSION, g_UpdatesInfo.CurrentVersion.c_str());
+        SetDlgItemTextA(hDlg, IDC_STATIC_CFU_UPDATE_VERSION , g_UpdatesInfo.UpdateVersion.c_str());
+        SetDlgItemTextA(hDlg, IDC_EDIT_CFU_CHANGES          , g_UpdatesInfo.Changes.c_str());
+    }
+    break;
+
+    case WM_COMMAND:
+        if (LOWORD(wParam) == IDOK)
+        {
+            EndDialog(hDlg, LOWORD(wParam));
+            ShellExecuteW(nullptr, L"open", AT_PRODUCT_LATEST_URL, nullptr, nullptr, SW_SHOWNORMAL);
+            return (INT_PTR)TRUE;
+        }
+
+        if (LOWORD(wParam) == IDCANCEL)
+        {
+            EndDialog(hDlg, LOWORD(wParam));
+            return (INT_PTR)TRUE;
+        }
+        break;
+
+    case WM_DESTROY: {
+        //  Clean up the font created in WM_INITDIALOG (shared across the dialog
+        //  controls). It must be retrieved from a control it was actually set on.
+        HFONT hFont = (HFONT)SendMessageW(GetDlgItem(hDlg, IDC_EDIT_CFU_CHANGES), WM_GETFONT, 0, 0);
+        if (hFont) {
+            DeleteObject(hFont);
+        }
+        // Note: the dialog icon is a shared icon from LoadIcon() and must not be
+        // passed to DestroyIcon().
+        break;
+    }
+    }
+    return (INT_PTR)FALSE;
+}
+
+std::chrono::system_clock::time_point ReadLastCheckForUpdatesTS() {
+    std::filesystem::path filePath = ATLocalAppDataDirPath();
+    filePath.append(CHECK_FOR_UPDATES_FILENAME);
+    std::ifstream file(filePath.string());
+
+    if (file.is_open()) {
+        long long timestamp;
+        file >> timestamp;
+        file.close();
+        return std::chrono::system_clock::from_time_t(timestamp);
+
+    }
+
+    return {};
+}
+
+void WriteCheckForUpdatesTS(const std::chrono::system_clock::time_point& timestamp) {
+    std::filesystem::path filePath = ATLocalAppDataDirPath();
+    filePath.append(CHECK_FOR_UPDATES_FILENAME);
+
+    std::ofstream file(filePath.string());
+    file << std::chrono::system_clock::to_time_t(timestamp);
+    file.close();
+}

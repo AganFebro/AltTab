@@ -1,0 +1,152 @@
+Release Notes
+=============
+
+Known Limitations
+-----------------
+- When running any application as an administrator (as elevated permissions), 
+  AltTab hotkeys does not work when the elevated applications are in focus.
+  This can be addressed by also running AltTab as an administrator.
+
+
+Known Issues
+------------
+- Available @ https://sourceforge.net/p/alttab/tickets/
+
+
+2026.1.0.0 new features and bug fixes
+-------------------------------------
++ Used edit control instead of static text control for search string. We can see
+  cue banner search text when the search string is empty.
+  > Displaying the tray context menu on search string edit control instead of 
+    default one.
+  > Default search string cue banner text can be changed from the settings.
+
++ Added the below options to control Mouse Hover actions in settings dialog.
+  > Show ProcessInfo Tooltip
+  > Show Highlight Rectangle
+  > Show Delete Button
+
++ Provided settings to configure highlight text and background colors from INI 
+  file.
+  Please add/edit the following lines under ListView section in INI file as
+  shown below:
+
+  [ListView]
+  HighlightTextColor=0xFF0000
+  HighlightBackgroundColor=0xFFFFBF
+
+  Note:
+  These settings are not available in Settings UI at present.
+  1. Please add the above params manually 
+  2. Go to settings dialog and update any setting to create the new settings
+     file.
+  After updating the highlight colors manually, please use
+  `Tray Icon -> Reload AltTabSettings.ini' menu to make use of the updated
+  settings in AltTab window.
+
+- Clear the process tooltip info while leaving the mouse from AltTab window.
+
+- Prevent closing AltTab window on pressing the Escape key when Context Menu
+  is visible in AltTab window.
+
+
+2025.2.0.1 new features and bug fixes
+-------------------------------------
+- Removed single instance check for time being.
+
+
+2025.2.0.0 new features and bug fixes
+-------------------------------------
++ Highlight search results in AltTab window (supports multi-word search).
++ List view enhancements:
+  > Display the selected item with gradient background color with frame 
+    rectangle around it.
+  > Display the hot track item with just frame rectangle around it.
+  > Draw a vertical line separator before process name column.
+  > Removed the dotted rectangle around the selected/focused item.
++ Show the inactive close button on the right side of the item in the list view
+  when the mouse is hovered on the item. When the mouse is hovered on the close
+  button, it is shown with an active close icon. Selected window will be closed
+  on clicking on the close button.
+  > Item will be displayed with red color when the process is being closed.
++ Added "Copy Title" and some tray menu items in context menu.
++ Show title, process info (path, description, company name & ID) in tooltip on
+  mouse hover on item in the list view.
++ Added "Close All Windows" menu item in tray.
++ Added some tray menu items in AltTab window context menu.
+- When the column header is displayed, window height is more than the required,
+  hence seeing an blank space below AltTab window bottom.
+
+
+2025.1.0.0 new features and bug fixes
+-------------------------------------
++ Implemented 'Run as Administrator' and added in tray context menu.
+
+
+2024.4.0.2 new features and bug fixes
+-------------------------------------
++ Added new setting "General/SystemTrayIconEnabled" in .ini to create or disable
+  system tray notification icon for AltTab.
++ Activate the selected process window on mouse single click instead of double
+  click in the list view.
+- Fixed: Alt+Ctrl+Tab was not working when Alt+Tab is unchecked in settings.
+
+
+2024.4 new features and bug fixes
+---------------------------------
++ Added Alt+Tab, Alt+Backtick, Alt+Ctrl+Tab hotkeys in the settings dialog.
++ Added option to show/hide process info tooltip in the settings dialog.
+- Removed the functionality to close the AltTab window when the application goes
+  inactive. This was causing the AltTab window to close frequently when the user
+  is trying to switch between the windows.
+
+
+2024.3 new features and bug fixes
+---------------------------------
++ Show process path and ID in tooltip on mouse hover on item in the list view.
++ Handled Alt+Ctrl+Tab.
++ Settings are stored in application directory instead of user profile Local 
+  AppData directory.
++ Added [SearchString] section in AltTabSettings.ini file to customize the
+  search string control font name, size, style, color and background color.
++ Saving the colors in 0xRRGGBB format in AltTabSettings.ini file.
++ AltTab window is high DPI aware.
++ Upgraded help file format from mht to chm.
++ Option to disable Search String in AltTab settings UI.
++ Reload settings from AltTabSettings.ini if any changes are made manually from
+  using tray context menu or from AltTab settings dialog.
++ Show AltTab window on mouse left button double clicked on tray icon.
++ Activate the selected process window on mouse left button double clicked on
+  the item in the list view.
+- Append "(Not Responding)" to title for the hung process.
+- Do not switch to Alt+Ctrl+Tab window if Alt+Tab window is already active.
+- Reset in Settings dialog resets the settings to the default values in UI but
+  not saving to file.
+- Close the AltTab window if the application is inactive (means AltTab window
+  is not in focus. Ex: When mouse left button is clicked outside).
+- Fixed an issue in CheckForUpdates dialog.
+
+
+2024.2 new features and bug fixes
+---------------------------------
+Initial release of AltTab.
+
++ Alt+Tab, Alt+Shift+Tab, Alt+Backtick & Alt+Shift+Backtick
++ AltTab Settings Dialog
++ Used fuzzy string matching algorithm to search the search string in the
+  process name / title and gives the degree of similarity how similar search
+  string and process name/title.
+  Ex | 100 % means exact match
+     |  80 % would cause "files" to match "filas" and so on ...
+  Note: Set the fuzzy string matching percent in the settings dialog.
++ Can specify group of similar applications to switch between these windows
+  using Alt+Backtick / Alt+Shift+Backtick.
+  Ex | Switch between notepad.exe/notepad++.exe processes using Alt+Backtick if
+     | notepad.exe and notepad++.exe are marked as similar processes.
+  Use settings dialog to define similar process groups.
++ Exclude processes
+
+PS
+--
+'+' : indicates new feature
+'-' : indicates bug fixed

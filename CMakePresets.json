@@ -1,0 +1,98 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 29,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "clang-debug",
+      "displayName": "Clang Debug x64",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/out/build/clang-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_COMPILER": "clang-cl",
+        "CMAKE_CXX_COMPILER": "clang-cl",
+        "CMAKE_C_COMPILER_TARGET": "x86_64-pc-windows-msvc",
+        "CMAKE_CXX_COMPILER_TARGET": "x86_64-pc-windows-msvc",
+        "CMAKE_LINKER": "lld-link",
+        "CMAKE_LINKER_TYPE": "LLD",
+        "CMAKE_AR": "llvm-lib",
+        "CMAKE_RC_COMPILER": "llvm-rc",
+        "CMAKE_MT": "llvm-mt",
+        "ALTTAB_ENABLE_LOGGER": "OFF",
+        "ALTTAB_BUILD_TESTER": "OFF"
+      }
+    },
+    {
+      "name": "clang-release",
+      "displayName": "Clang Release x64",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/out/build/clang-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_C_COMPILER": "clang-cl",
+        "CMAKE_CXX_COMPILER": "clang-cl",
+        "CMAKE_C_COMPILER_TARGET": "x86_64-pc-windows-msvc",
+        "CMAKE_CXX_COMPILER_TARGET": "x86_64-pc-windows-msvc",
+        "CMAKE_LINKER": "lld-link",
+        "CMAKE_LINKER_TYPE": "LLD",
+        "CMAKE_AR": "llvm-lib",
+        "CMAKE_RC_COMPILER": "llvm-rc",
+        "CMAKE_MT": "llvm-mt",
+        "ALTTAB_ENABLE_LOGGER": "OFF",
+        "ALTTAB_BUILD_TESTER": "OFF"
+      }
+    },
+    {
+      "name": "clang-release-logger",
+      "displayName": "Clang Release x64 with logger",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/out/build/clang-release-logger",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_C_COMPILER": "clang-cl",
+        "CMAKE_CXX_COMPILER": "clang-cl",
+        "CMAKE_C_COMPILER_TARGET": "x86_64-pc-windows-msvc",
+        "CMAKE_CXX_COMPILER_TARGET": "x86_64-pc-windows-msvc",
+        "CMAKE_LINKER": "lld-link",
+        "CMAKE_LINKER_TYPE": "LLD",
+        "CMAKE_AR": "llvm-lib",
+        "CMAKE_RC_COMPILER": "llvm-rc",
+        "CMAKE_MT": "llvm-mt",
+        "ALTTAB_ENABLE_LOGGER": "ON",
+        "ALTTAB_BUILD_TESTER": "OFF"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "clang-debug",
+      "configurePreset": "clang-debug"
+    },
+    {
+      "name": "clang-release",
+      "configurePreset": "clang-release"
+    },
+    {
+      "name": "clang-release-logger",
+      "configurePreset": "clang-release-logger"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "clang-debug",
+      "configurePreset": "clang-debug"
+    },
+    {
+      "name": "clang-release",
+      "configurePreset": "clang-release"
+    },
+    {
+      "name": "clang-release-logger",
+      "configurePreset": "clang-release-logger"
+    }
+  ]
+}

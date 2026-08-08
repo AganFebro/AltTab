@@ -1,0 +1,303 @@
+// Microsoft Visual C++ generated resource script.
+//
+#include "resource.h"
+
+#define APSTUDIO_READONLY_SYMBOLS
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 2 resource.
+//
+#ifndef APSTUDIO_INVOKED
+#include "targetver.h"
+#endif
+#define APSTUDIO_HIDDEN_SYMBOLS
+#include "windows.h"
+#undef APSTUDIO_HIDDEN_SYMBOLS
+
+/////////////////////////////////////////////////////////////////////////////
+#undef APSTUDIO_READONLY_SYMBOLS
+
+/////////////////////////////////////////////////////////////////////////////
+// English (United States) resources
+
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)
+LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Icon
+//
+
+// Icon with lowest ID value placed first to ensure application icon
+// remains consistent on all systems.
+IDI_ALTTAB              ICON                    "res\\AltTab.ico"
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Menu
+//
+
+IDC_TRAY_CONTEXTMENU MENU
+BEGIN
+    POPUP ""
+    BEGIN
+        MENUITEM "&About AltTab",               ID_TRAYCONTEXTMENU_ABOUTALTTAB
+        MENUITEM SEPARATOR
+        MENUITEM "ReadMe",                      ID_TRAYCONTEXTMENU_README
+        MENUITEM "&Help",                       ID_TRAYCONTEXTMENU_HELP
+        MENUITEM "Release Notes",               ID_TRAYCONTEXTMENU_RELEASENOTES
+        MENUITEM SEPARATOR
+        MENUITEM "Settings",                    ID_TRAYCONTEXTMENU_SETTINGS
+        MENUITEM "Disable AltTab",              ID_TRAYCONTEXTMENU_DISABLEALTTAB
+        MENUITEM "Check for Updates",           ID_TRAYCONTEXTMENU_CHECKFORUPDATES
+        MENUITEM "Run at Startup",              ID_TRAYCONTEXTMENU_RUNATSTARTUP
+        MENUITEM "Run as Administrator",        ID_TRAYCONTEXTMENU_RUNASADMIN
+        MENUITEM SEPARATOR
+        MENUITEM "Close All Windows",           ID_TRAYCONTEXTMENU_CLOSEALLWINDOWS
+        MENUITEM SEPARATOR
+        MENUITEM "Reload AltTabSettings.ini",   ID_TRAYCONTEXTMENU_RELOADALTTABSETTINGS
+        MENUITEM "Restart",                     ID_TRAYCONTEXTMENU_RESTART
+        MENUITEM "E&xit",                       ID_TRAYCONTEXTMENU_EXIT
+    END
+END
+
+IDR_CONTEXTMENU MENU
+BEGIN
+    POPUP ""
+    BEGIN
+        MENUITEM "Close\tDel",                  ID_CONTEXTMENU_CLOSE_WINDOW
+        MENUITEM "Terminate\tShift+Del",        ID_CONTEXTMENU_KILL_PROCESS
+        MENUITEM SEPARATOR
+        MENUITEM "&Close All",                  ID_CONTEXTMENU_CLOSEALLWINDOWS
+        MENUITEM "&Terminate All",              ID_CONTEXTMENU_KILLALLPROCESSES
+        MENUITEM SEPARATOR
+        MENUITEM "&Open Path",                  ID_CONTEXTMENU_OPEN_PATH
+        MENUITEM "Copy &Path",                  ID_CONTEXTMENU_COPY_PATH
+        MENUITEM "Copy &Title",                 ID_CONTEXTMENU_COPY_TITLE
+        MENUITEM SEPARATOR
+        MENUITEM "About AltTab\tShift+F1",      ID_CONTEXTMENU_ABOUTALTTAB
+        MENUITEM "Settings\tF2",                ID_CONTEXTMENU_SETTINGS
+        MENUITEM SEPARATOR
+        POPUP "Tray Menus"
+        BEGIN
+            MENUITEM "&About AltTab",               ID_TRAYCONTEXTMENU_ABOUTALTTAB
+            MENUITEM SEPARATOR
+            MENUITEM "ReadMe",                      ID_TRAYCONTEXTMENU_README
+            MENUITEM "&Help",                       ID_TRAYCONTEXTMENU_HELP
+            MENUITEM "Release Notes",               ID_TRAYCONTEXTMENU_RELEASENOTES
+            MENUITEM SEPARATOR
+            MENUITEM "Check for Updates",           ID_TRAYCONTEXTMENU_CHECKFORUPDATES
+            MENUITEM SEPARATOR
+            MENUITEM "Reload AltTabSettings.ini",   ID_TRAYCONTEXTMENU_RELOADALTTABSETTINGS
+            MENUITEM "Restart",                     ID_TRAYCONTEXTMENU_RESTART
+            MENUITEM "E&xit",                       ID_TRAYCONTEXTMENU_EXIT
+        END
+    END
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Accelerator
+//
+
+IDC_ALTTAB ACCELERATORS
+BEGIN
+    "?",            IDM_ABOUT,              ASCII,  ALT
+    "/",            IDM_ABOUT,              ASCII,  ALT
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Dialog
+//
+
+IDD_ABOUTBOX DIALOGEX 0, 0, 176, 55
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "About AltTab"
+FONT 8, "MS Shell Dlg", 0, 0, 0x1
+BEGIN
+    ICON            IDI_ALTTAB,IDC_STATIC,8,9,21,20
+    CONTROL         "<a>{PRODUCT_URL}</a> v{FULLVERSION}",IDC_SYSLINK_ABOUT_PRODUCT_NAME,
+                    "SysLink",WS_TABSTOP,36,9,135,8
+    CONTROL         "{COPYRIGHT}",IDC_SYSLINK_ABOUT_COPYRIGHT,"SysLink",WS_TABSTOP,36,20,137,9
+    DEFPUSHBUTTON   "&OK",IDOK,63,36,50,14,WS_GROUP
+END
+
+IDD_SETTINGS DIALOGEX 0, 0, 369, 379
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "AltTab Settings"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    DEFPUSHBUTTON   "OK",IDOK,106,358,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,159,358,50,14
+    GROUPBOX        "Storage",IDC_GROUPBOX_STORAGE,7,7,355,26
+    EDITTEXT        IDC_EDIT_SETTINGS_FILEPATH,11,16,347,13,ES_AUTOHSCROLL | ES_READONLY
+    GROUPBOX        "Hotkeys",IDC_GROUPBOX_HOTKEYS,7,35,355,26
+    CONTROL         "Alt+Tab",IDC_CHECK_ALT_TAB,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,13,46,40,10
+    CONTROL         "Alt+Backtick",IDC_CHECK_ALT_BACKTICK,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,57,46,53,10
+    CONTROL         "Alt+Ctrl+Tab",IDC_CHECK_ALT_CTRL_TAB,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,114,46,58,10
+    GROUPBOX        "General",IDC_GROUPBOX_GENERAL,7,64,355,99
+    LTEXT           "SearchString Banner Text",IDC_STATIC_FUZZY_MATCH_PERCENT2,13,76,92,8
+    EDITTEXT        IDC_EDIT_SS_BANNER_TEXT,110,73,248,13,ES_AUTOHSCROLL
+    LTEXT           "&Fuzzy string match percent",IDC_STATIC_FUZZY_MATCH_PERCENT,13,90,92,8
+    EDITTEXT        IDC_EDIT_FUZZY_MATCH_PERCENT,110,88,44,13,ES_AUTOHSCROLL
+    CONTROL         "",IDC_SPIN_FUZZY_MATCH_PERCENT,"msctls_updown32",UDS_SETBUDDYINT | UDS_ALIGNRIGHT | UDS_AUTOBUDDY | UDS_ARROWKEYS,144,88,11,13
+    LTEXT           "Window &Transparency",IDC_STATIC,13,104,92,8
+    EDITTEXT        IDC_EDIT_WINDOW_TRANSPARENCY,110,102,44,13,ES_AUTOHSCROLL
+    CONTROL         "",IDC_SPIN_WINDOW_TRANSPARENCY,"msctls_updown32",UDS_SETBUDDYINT | UDS_ALIGNRIGHT | UDS_AUTOBUDDY | UDS_ARROWKEYS,144,102,11,13
+    LTEXT           "Window &Width (%)",IDC_STATIC,13,118,92,8
+    EDITTEXT        IDC_EDIT_WINDOW_WIDTH_PERCENTAGE,110,116,44,13,ES_AUTOHSCROLL
+    CONTROL         "",IDC_SPIN_WINDOW_WIDTH_PERCENTAGE,"msctls_updown32",UDS_SETBUDDYINT | UDS_ALIGNRIGHT | UDS_AUTOBUDDY | UDS_ARROWKEYS,144,116,11,13
+    LTEXT           "Window &Height (%)",IDC_STATIC,13,132,92,8
+    EDITTEXT        IDC_EDIT_WINDOW_HEIGHT_PERCENTAGE,110,130,44,13,ES_AUTOHSCROLL
+    CONTROL         "",IDC_SPIN_WINDOW_HEIGHT_PERCENTAGE,"msctls_updown32",UDS_SETBUDDYINT | UDS_ALIGNRIGHT | UDS_AUTOBUDDY | UDS_ARROWKEYS,144,130,11,13
+    LTEXT           "Check for &Updates",IDC_STATIC,13,147,93,8
+    COMBOBOX        IDC_CHECK_FOR_UPDATES,110,144,44,11,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    CONTROL         "Prompt &Terminate All",IDC_CHECK_PROMPT_TERMINATE_ALL,
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,210,90,144,10
+    CONTROL         "Show &Search String",IDC_CHECK_SHOW_SEARCH_STRING,
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,210,103,144,10
+    CONTROL         "Show &Column Header",IDC_CHECK_SHOW_COL_HEADER,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,210,116,144,10
+    CONTROL         "Show Column &Process Name",IDC_CHECK_SHOW_COL_PROCESSNAME,
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,210,129,144,10
+    GROUPBOX        "Mouse Hover",IDC_GROUPBOX_MOUSEHOVER,7,166,355,53
+    CONTROL         "Show ProcessInfo Tooltip",IDC_CHECK_MH_SHOW_PROCESSINFO_TOOLTIP,
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,13,178,144,10
+    CONTROL         "Show Highlight Rectangle",IDC_CHECK_MH_SHOW_HIGHLIGHT_RECT,
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,13,191,144,10
+    CONTROL         "Show Delete Button",IDC_CHECK_MH_SHOW_DELETE_BUTTON,
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,13,204,144,10
+    GROUPBOX        "Alt Backtick (~)",IDC_GROUPBOX_BACKTICK,7,223,355,69
+    LTEXT           "Similar Process Groups",IDC_STATIC,12,234,72,8
+    EDITTEXT        IDC_EDIT_SIMILAR_PROCESS_GROUPS,11,245,347,42,ES_MULTILINE | ES_AUTOVSCROLL | WS_VSCROLL
+    GROUPBOX        "Process Exclusions",IDC_GROUPBOX_PROCESS_EXCLUSIONS,7,294,355,58
+    CONTROL         "Enable Process E&xclusions",IDC_CHECK_PROCESS_EXCLUSIONS,
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,11,304,144,10
+    EDITTEXT        IDC_EDIT_PROCESS_EXCLUSIONS,11,316,347,31,ES_MULTILINE | ES_AUTOVSCROLL | WS_VSCROLL
+    PUSHBUTTON      "&Apply",IDC_BUTTON_APPLY,53,358,50,14
+    PUSHBUTTON      "Reset",IDC_BUTTON_RESET,212,358,50,14
+    PUSHBUTTON      "Reload",IDC_BUTTON_RELOAD,265,358,50,14
+END
+
+IDD_CHECK_FOR_UPDATES DIALOGEX 0, 0, 451, 215
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "AltTab: Update Available"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    DEFPUSHBUTTON   "Download",IDOK,173,194,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,227,194,50,14
+    LTEXT           "Current Version:",IDC_STATIC_1,7,7,103,10
+    LTEXT           "Update Version:",IDC_STATIC_2,7,19,103,10
+    LTEXT           "CurrentVersion",IDC_STATIC_CFU_CURRENT_VERSION,115,7,132,10
+    LTEXT           "UpdateVersion",IDC_STATIC_CFU_UPDATE_VERSION,115,19,132,10
+    EDITTEXT        IDC_EDIT_CFU_CHANGES,7,44,437,145,ES_MULTILINE | ES_AUTOVSCROLL | ES_AUTOHSCROLL | ES_READONLY | WS_VSCROLL
+    LTEXT           "Changes:",IDC_STATIC_3,7,31,82,10
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// DESIGNINFO
+//
+
+#ifdef APSTUDIO_INVOKED
+GUIDELINES DESIGNINFO
+BEGIN
+    IDD_ABOUTBOX, DIALOG
+    BEGIN
+        LEFTMARGIN, 5
+        RIGHTMARGIN, 171
+        TOPMARGIN, 5
+        BOTTOMMARGIN, 50
+    END
+
+    IDD_SETTINGS, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 362
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 372
+    END
+
+    IDD_CHECK_FOR_UPDATES, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 444
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 208
+    END
+END
+#endif    // APSTUDIO_INVOKED
+
+
+#ifdef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// TEXTINCLUDE
+//
+
+1 TEXTINCLUDE 
+BEGIN
+    "resource.h\0"
+END
+
+2 TEXTINCLUDE 
+BEGIN
+    "#ifndef APSTUDIO_INVOKED\r\n"
+    "#include ""targetver.h""\r\n"
+    "#endif\r\n"
+    "#define APSTUDIO_HIDDEN_SYMBOLS\r\n"
+    "#include ""windows.h""\r\n"
+    "#undef APSTUDIO_HIDDEN_SYMBOLS\r\n"
+    "\0"
+END
+
+3 TEXTINCLUDE 
+BEGIN
+    "\r\n"
+    "\0"
+END
+
+#endif    // APSTUDIO_INVOKED
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// RCDATA
+//
+
+IDB_PNG_CLOSE_WINDOW_ACTIVE RCDATA                  "res\\CloseWindowActive.png"
+
+IDB_PNG_CLOSE_WINDOW_INACTIVE RCDATA                  "res\\CloseWindowInactive.png"
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// String Table
+//
+
+STRINGTABLE
+BEGIN
+    IDS_APP_TITLE           "AltTab"
+    IDS_EDIT_CUE_BANNER_TEXT "Type to filter windows..."
+    IDC_ALTTAB              "ALTTAB"
+END
+
+#endif    // English (United States) resources
+/////////////////////////////////////////////////////////////////////////////
+
+
+
+#ifndef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 3 resource.
+//
+
+
+/////////////////////////////////////////////////////////////////////////////
+#endif    // not APSTUDIO_INVOKED
+
