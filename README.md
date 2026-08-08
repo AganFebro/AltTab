@@ -4,6 +4,10 @@
 AltTab is a lightweight native Win32 alternative to the Windows task switcher. It adds instant fuzzy search,
 process grouping, window/process actions, and a modern Windows 11-style interface without a UI framework.
 
+| Screenshots Vertical mode | Screenshots Dock mode |
+| --- | --- |
+| ![AltTab Vertical mode](Screenshots/new_screenshots/Screenshots_2.png) | ![AltTab Dock mode](Screenshots/new_screenshots/Screenshots_3.png) |
+
 ## Build
 
 AltTab is built on Windows with CMake, Ninja, and the LLVM `clang-cl` toolchain. The supported target is x64.
@@ -48,6 +52,12 @@ ctest --preset clang-release --output-on-failure
 ```
 
 Build output is kept under `out/`. Do not use the removed `.sln`, `.vcxproj`, or MSBuild packaging scripts.
+
+## Download
+
+Download the latest compiled x64 release for Windows:
+
+[AltTab Github Release](https://github.com/AganFebro/AltTab/releases)
 
 ## Usage
 
