@@ -260,6 +260,7 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPar
     case WM_SETTINGCHANGE:
     case WM_THEMECHANGED:
     case WM_SYSCOLORCHANGE:
+    case WM_DISPLAYCHANGE:
         if (g_hAltTabWnd)
             SendMessageW(g_hAltTabWnd, message, wParam, lParam);
         break;

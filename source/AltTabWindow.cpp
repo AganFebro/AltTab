@@ -5,6 +5,7 @@
 #include "version.h"
 #include "AltTabWindow.h"
 #include "AltTabMenu.h"
+#include "AltTabMonitor.h"
 #include "AltTabTheme.h"
 #include "AltTabWindowRenderer.h"
 
@@ -1022,11 +1023,23 @@ INT_PTR CALLBACK AltTabWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lP
     case WM_SETTINGCHANGE:
     case WM_THEMECHANGED:
     case WM_SYSCOLORCHANGE:
-        RebuildSwitcherVisuals(hWnd, GetDpiForWindow(hWnd));
-        LayoutSwitcherWindow(hWnd);
+    case WM_DISPLAYCHANGE: {
+        bool usedFallback = false;
+        const MonitorDescriptor monitor = ResolveSwitcherMonitor(g_Settings.SwitcherMonitor, g_hFGWnd, &usedFallback);
+        const bool dpiChanged = !g_SwitcherRenderer || g_SwitcherRenderer->Theme().dpi != monitor.dpi;
+        RebuildSwitcherVisuals(hWnd, monitor.dpi);
+        if (dpiChanged)
+            RefreshAltTabWindow();
+        else
+            LayoutSwitcherWindow(hWnd);
+        if (usedFallback)
+            AT_LOG_WARN(
+                "Configured switcher monitor [%ls] is unavailable; using the primary monitor",
+                g_Settings.SwitcherMonitor.c_str());
         InvalidateRect(hWnd, nullptr, TRUE);
         InvalidateRect(g_hListView, nullptr, TRUE);
         return 0;
+    }
         HANDLE_MSG(hWnd, WM_ACTIVATE, ATW_OnActivate);
         HANDLE_MSG(hWnd, WM_CLOSE, ATW_OnClose);
         HANDLE_MSG(hWnd, WM_COMMAND, ATW_OnCommand);
@@ -1552,20 +1565,17 @@ bool IsExcludedProcess(const std::wstring& processName) {
 DWORD prevGdiObjectCount = 0;
 DWORD prevUserObjectCount = 0;
 
-static RECT GetSwitcherWorkArea() {
-    HWND anchor = g_hFGWnd ? g_hFGWnd : GetForegroundWindow();
-    HMONITOR monitor = MonitorFromWindow(anchor, MONITOR_DEFAULTTONEAREST);
-    MONITORINFO info{ sizeof(info) };
-    if (GetMonitorInfoW(monitor, &info))
-        return info.rcWork;
-    return { 0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN) };
-}
-
 static void LayoutSwitcherWindow(HWND hWnd) {
     if (!g_SwitcherRenderer || !g_hListView)
         return;
+    const MonitorDescriptor monitor = ResolveSwitcherMonitor(g_Settings.SwitcherMonitor, g_hFGWnd);
+    if (g_SwitcherRenderer->Theme().dpi != monitor.dpi) {
+        RebuildSwitcherVisuals(hWnd, monitor.dpi);
+        RefreshAltTabWindow();
+        return;
+    }
     const ThemeMetrics& metrics = g_SwitcherRenderer->Theme().metrics;
-    const RECT work = GetSwitcherWorkArea();
+    const RECT work = monitor.workArea;
     const int workWidth = work.right - work.left;
     const int workHeight = work.bottom - work.top;
     const int minimumWidth = MulDiv(520, static_cast<int>(g_SwitcherRenderer->Theme().dpi), 96);
@@ -1663,11 +1673,16 @@ BOOL ATW_OnCreate(HWND hWnd, LPCREATESTRUCT /*lpCreateStruct*/) {
     AT_LOG_TRACE;
 
     g_hAltTabWnd = hWnd;
-    HWND anchor = g_hFGWnd ? g_hFGWnd : GetForegroundWindow();
-    const UINT dpi = anchor ? GetDpiForWindow(anchor) : 96;
-    RebuildSwitcherVisuals(hWnd, dpi);
+    bool usedFallback = false;
+    const MonitorDescriptor monitor = ResolveSwitcherMonitor(g_Settings.SwitcherMonitor, g_hFGWnd, &usedFallback);
+    RebuildSwitcherVisuals(hWnd, monitor.dpi);
+    AT_LOG_INFO(
+        "Switcher monitor: setting = [%ls], resolved = [%ls], fallback = %d",
+        g_Settings.SwitcherMonitor.c_str(),
+        monitor.persistentId.c_str(),
+        usedFallback);
 
-    const RECT work = GetSwitcherWorkArea();
+    const RECT work = monitor.workArea;
     g_Settings.WindowWidth = MulDiv(work.right - work.left, g_Settings.WidthPercentage, 100);
 
     g_hSearchString = CreateWindowExW(
@@ -1703,8 +1718,8 @@ BOOL ATW_OnCreate(HWND hWnd, LPCREATESTRUCT /*lpCreateStruct*/) {
     if (!g_hListView)
         return FALSE;
     SetWindowSubclass(g_hListView, ListViewSubclassProc, 1, 0);
-    CustomizeListView(g_hListView, dpi);
-    RebuildSwitcherVisuals(hWnd, dpi);
+    CustomizeListView(g_hListView, monitor.dpi);
+    RebuildSwitcherVisuals(hWnd, monitor.dpi);
     RefreshAltTabWindow();
     LayoutSwitcherWindow(hWnd);
 

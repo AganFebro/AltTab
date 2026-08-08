@@ -33,6 +33,11 @@ Custom automatically. New settings files and Reset use:
   [Appearance]
   Mode=System
 
+The Settings dialog also provides a Switcher monitor dropdown. Automatic
+(foreground application) keeps the existing behavior. Choosing a named display
+locks the switcher to that physical monitor. If it is disconnected, AltTab uses
+the primary monitor until the selected display reconnects.
+
 - Use Alt+Tab / Alt+Shift+Tab / Alt+Backtick / Alt+Shift+Backtick to bring the
   main AltTab window, and use 
 

@@ -61,6 +61,7 @@ Build artifacts are written below `out/`. The optional `AltTabTester` target is 
 | File | Purpose |
 | --- | --- |
 | `AltTab.cpp/h` | Global state, keyboard hook, tray icon, and elevation handling |
+| `AltTabMonitor.cpp/h` | Monitor enumeration, friendly labels, persistent identities, DPI, and placement resolution |
 | `AltTabWindow.cpp/h` | Switcher controller, window enumeration, filtering, selection, input, and activation |
 | `AltTabTheme.cpp/h` | Appearance modes, system theme/accent detection, palettes, DPI metrics, and DWM chrome |
 | `AltTabWindowRenderer.cpp/h` | GDI switcher/search/row rendering and visual-resource ownership |
@@ -78,6 +79,7 @@ Build artifacts are written below `out/`. The optional `AltTabTester` target is 
 - **Settings file**: `AltTabSettings.ini` in the application directory
 - **Sections**: `[Appearance]`, `[SearchString]`, `[ListView]`, `[General]`, `[Hotkeys]`, `[Backtick]`, and `[ProcessExclusions]`
 - **Appearance**: `Mode=System|Light|Dark|Custom`; a missing key migrates an existing INI to `Custom`
+- **Monitor placement**: `SwitcherMonitor=Automatic` or a persistent monitor device path; unavailable fixed monitors fall back to primary without losing the saved choice
 - **Colors**: hexadecimal RGB values such as `0xFF0000`
 - **Font styles**: `normal`, `italic`, `bold`, or `bold italic`
 - **Reload**: tray menu -> `Reload AltTabSettings.ini`
@@ -141,7 +143,7 @@ Elevation helpers live in `Utils.cpp`. Elevated AltTab may be required to contro
 ## Known Limitations
 
 - Hotkeys do not work for an elevated foreground application unless AltTab also runs elevated.
-- The switcher opens on the foreground window's monitor, but it does not span or combine monitors.
+- The switcher opens on the foreground window's monitor by default, or on a fixed monitor selected in Settings; it does not span or combine monitors.
 - Some highlight colors are configurable only through the INI file.
 
 ## Resource Files

@@ -62,6 +62,7 @@ namespace {
     const wchar_t* WINDOW_TRANSPARENCY = L"WindowTransparency";
     const wchar_t* WINDOW_WIDTH_PERCENTAGE = L"WindowWidthPercentage";
     const wchar_t* WINDOW_HEIGHT_PERCENTAGE = L"WindowHeightPercentage";
+    const wchar_t* SWITCHER_MONITOR = L"SwitcherMonitor";
     const wchar_t* SHOW_SEARCH_STRING = L"ShowSearchString";
     const wchar_t* SHOW_PROCESS_NAME = L"ShowProcessName";
     const wchar_t* SHOW_COL_PROCESSNAME = L"ShowColProcessName"; // Legacy read-only key.
@@ -110,6 +111,50 @@ namespace {
         EnableWindow(GetDlgItem(hDlg, IDC_EDIT_WINDOW_TRANSPARENCY), enabled);
         EnableWindow(GetDlgItem(hDlg, IDC_SPIN_WINDOW_TRANSPARENCY), enabled);
     }
+
+    std::vector<MonitorDescriptor> settingsMonitorOptions;
+
+    std::wstring ReadSwitcherMonitorFromCombo(HWND hDlg) {
+        const int selected = ComboBox_GetCurSel(GetDlgItem(hDlg, IDC_COMBO_SWITCHER_MONITOR));
+        if (selected <= 0 || static_cast<std::size_t>(selected - 1) >= settingsMonitorOptions.size())
+            return std::wstring(AUTOMATIC_SWITCHER_MONITOR);
+        const MonitorDescriptor& monitor = settingsMonitorOptions[static_cast<std::size_t>(selected - 1)];
+        return monitor.persistentId.empty() ? monitor.gdiDeviceName : monitor.persistentId;
+    }
+
+    bool SameSwitcherMonitorSetting(std::wstring_view left, std::wstring_view right) {
+        if (IsAutomaticSwitcherMonitor(left) || IsAutomaticSwitcherMonitor(right))
+            return IsAutomaticSwitcherMonitor(left) && IsAutomaticSwitcherMonitor(right);
+        return std::any_of(
+            settingsMonitorOptions.begin(), settingsMonitorOptions.end(), [left, right](const auto& monitor) {
+                return MonitorMatchesSetting(monitor, left) && MonitorMatchesSetting(monitor, right);
+            });
+    }
+
+    void RefreshSwitcherMonitorCombo(HWND hDlg, std::wstring_view selectedSetting) {
+        HWND combo = GetDlgItem(hDlg, IDC_COMBO_SWITCHER_MONITOR);
+        ComboBox_ResetContent(combo);
+        ComboBox_AddString(combo, L"Automatic (foreground application)");
+
+        settingsMonitorOptions = EnumerateMonitors();
+        const std::vector<std::wstring> labels = BuildMonitorLabels(settingsMonitorOptions);
+        int selectedIndex = IsAutomaticSwitcherMonitor(selectedSetting) ? 0 : -1;
+        for (std::size_t index = 0; index < settingsMonitorOptions.size(); ++index) {
+            ComboBox_AddString(combo, labels[index].c_str());
+            if (MonitorMatchesSetting(settingsMonitorOptions[index], selectedSetting))
+                selectedIndex = static_cast<int>(index + 1);
+        }
+
+        if (selectedIndex < 0) {
+            MonitorDescriptor disconnected;
+            disconnected.persistentId = selectedSetting;
+            settingsMonitorOptions.push_back(std::move(disconnected));
+            selectedIndex = ComboBox_AddString(combo, L"Previously selected monitor (disconnected)");
+        }
+
+        ComboBox_SetCurSel(combo, selectedIndex);
+        SendMessageW(combo, CB_SETDROPPEDWIDTH, MulDiv(320, GetDpiForWindow(hDlg), 96), 0);
+    }
 }
 
 /*!
@@ -143,6 +188,7 @@ void AltTabSettings::Reset() {
     LVHighlightBackgroundColor = DEFAULT_LV_HIGHLIGHT_BG_COLOR;
     WidthPercentage = DEFAULT_WIDTH;
     HeightPercentage = DEFAULT_HEIGHT;
+    SwitcherMonitor = AUTOMATIC_SWITCHER_MONITOR;
     FuzzyMatchPercent = DEFAULT_FUZZYMATCHPERCENT;
     Transparency = DEFAULT_TRANSPARENCY;
     SimilarProcessGroups = DEFAULT_SIMILARPROCESSGROUPS;
@@ -292,6 +338,13 @@ INT_PTR CALLBACK ATSettingsDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARA
         return (LRESULT)GetSysColorBrush(COLOR_WINDOW);
     } break;
 
+    case WM_DISPLAYCHANGE: {
+        const std::wstring selectedMonitor = ReadSwitcherMonitorFromCombo(hDlg);
+        RefreshSwitcherMonitorCombo(hDlg, selectedMonitor);
+        EnableWindow(GetDlgItem(hDlg, IDC_BUTTON_APPLY), AreSettingsModified(hDlg));
+        return (INT_PTR)TRUE;
+    }
+
         // case WM_CTLCOLORSTATIC:
         //{
         //     HDC  hdcStatic = (HDC)wParam;
@@ -431,6 +484,7 @@ INT_PTR CALLBACK ATSettingsDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARA
         DestroyIcon((HICON)SendMessageW(hDlg, WM_GETICON, ICON_SMALL, 0));
         DestroyIcon((HICON)SendMessageW(hDlg, WM_GETICON, ICON_BIG, 0));
 
+        settingsMonitorOptions.clear();
         g_hSettingsWnd = nullptr;
     } break;
     }
@@ -626,6 +680,7 @@ void ATSettingsToFile(const std::wstring& iniFile) {
     WriteSetting(iniFile, GENERAL, WINDOW_TRANSPARENCY, g_Settings.Transparency);
     WriteSetting(iniFile, GENERAL, WINDOW_WIDTH_PERCENTAGE, g_Settings.WidthPercentage);
     WriteSetting(iniFile, GENERAL, WINDOW_HEIGHT_PERCENTAGE, g_Settings.HeightPercentage);
+    WriteSetting(iniFile, GENERAL, SWITCHER_MONITOR, g_Settings.SwitcherMonitor);
     WriteSetting(iniFile, GENERAL, SHOW_SEARCH_STRING, g_Settings.ShowSearchString);
     WriteSetting(iniFile, GENERAL, SHOW_PROCESS_NAME, g_Settings.ShowProcessName);
     WriteSetting(iniFile, GENERAL, CHECK_FOR_UPDATES, g_Settings.CheckForUpdatesOpt);
@@ -689,6 +744,9 @@ void ATLoadSettings() {
     ReadSetting(iniFile, GENERAL, WINDOW_TRANSPARENCY, DEFAULT_TRANSPARENCY, g_Settings.Transparency);
     ReadSetting(iniFile, GENERAL, WINDOW_WIDTH_PERCENTAGE, DEFAULT_WIDTH, g_Settings.WidthPercentage);
     ReadSetting(iniFile, GENERAL, WINDOW_HEIGHT_PERCENTAGE, DEFAULT_HEIGHT, g_Settings.HeightPercentage);
+    ReadSetting(iniFile, GENERAL, SWITCHER_MONITOR, AUTOMATIC_SWITCHER_MONITOR.data(), g_Settings.SwitcherMonitor);
+    if (IsAutomaticSwitcherMonitor(g_Settings.SwitcherMonitor))
+        g_Settings.SwitcherMonitor = AUTOMATIC_SWITCHER_MONITOR;
 
     // Clamp numeric values to their valid ranges so a hand-edited (and auto-reloaded)
     // INI cannot produce an unusable (invisible or zero-size) switcher window.
@@ -849,6 +907,7 @@ void ATReadSettingsFromUI(HWND hDlg, AltTabSettings& settings) {
     settings.Transparency = GetDlgItemInt(hDlg, IDC_EDIT_WINDOW_TRANSPARENCY, nullptr, FALSE);
     settings.WidthPercentage = GetDlgItemInt(hDlg, IDC_EDIT_WINDOW_WIDTH_PERCENTAGE, nullptr, FALSE);
     settings.HeightPercentage = GetDlgItemInt(hDlg, IDC_EDIT_WINDOW_HEIGHT_PERCENTAGE, nullptr, FALSE);
+    settings.SwitcherMonitor = ReadSwitcherMonitorFromCombo(hDlg);
     settings.PromptTerminateAll = IsDlgButtonChecked(hDlg, IDC_CHECK_PROMPT_TERMINATE_ALL) == BST_CHECKED;
     settings.ShowSearchString = IsDlgButtonChecked(hDlg, IDC_CHECK_SHOW_SEARCH_STRING) == BST_CHECKED;
     settings.ShowProcessName = IsDlgButtonChecked(hDlg, IDC_CHECK_SHOW_PROCESSNAME) == BST_CHECKED;
@@ -908,6 +967,7 @@ void ATLogSettings(const AltTabSettings& settings) {
     AT_LOG_DEBUG("  Transparency              : [%d]", settings.Transparency);
     AT_LOG_DEBUG("  WidthPercentage           : [%d]", settings.WidthPercentage);
     AT_LOG_DEBUG("  HeightPercentage          : [%d]", settings.HeightPercentage);
+    AT_LOG_DEBUG("  SwitcherMonitor           : [%ls]", settings.SwitcherMonitor.c_str());
     AT_LOG_DEBUG("  CheckForUpdatesOpt        : [%s]", WStrToUTF8(settings.CheckForUpdatesOpt).c_str());
     AT_LOG_DEBUG("  PromptTerminateAll        : [%s]", BOOL_TO_CSTR(settings.PromptTerminateAll));
     AT_LOG_DEBUG("  ShowSearchString          : [%s]", BOOL_TO_CSTR(settings.ShowSearchString));
@@ -945,6 +1005,7 @@ bool AreSettingsModified(HWND hDlg) {
         settings.Appearance != g_Settings.Appearance || settings.FuzzyMatchPercent != g_Settings.FuzzyMatchPercent
         || settings.Transparency != g_Settings.Transparency || settings.WidthPercentage != g_Settings.WidthPercentage
         || settings.HeightPercentage != g_Settings.HeightPercentage
+        || !SameSwitcherMonitorSetting(settings.SwitcherMonitor, g_Settings.SwitcherMonitor)
         || settings.CheckForUpdatesOpt != g_Settings.CheckForUpdatesOpt
         || settings.PromptTerminateAll != g_Settings.PromptTerminateAll
         || settings.ShowSearchString != g_Settings.ShowSearchString
@@ -981,6 +1042,10 @@ std::pair<std::wstring, std::wstring> AltTabSettings::IsValid(bool& valid) {
     if (Appearance < AppearanceMode::System || Appearance > AppearanceMode::Custom) {
         valid = false;
         return { L"Invalid Appearance", L"Theme mode must be System, Light, Dark, or Custom." };
+    }
+    if (SwitcherMonitor.empty()) {
+        valid = false;
+        return { L"Invalid Switcher Monitor", L"Switcher monitor must be Automatic or a saved monitor identifier." };
     }
     // Validate numeric ranges. These mirror the Settings dialog spin-control ranges
     // and guard against unusable values (e.g. a fully-transparent or zero-size
@@ -1126,6 +1191,8 @@ void ATSettingsInitDialog(HWND hDlg, const AltTabSettings& settings) {
     }
     ComboBox_SetCurSel(hAppearance, static_cast<int>(settings.Appearance));
     UpdateAppearanceControls(hDlg, settings.Appearance);
+
+    RefreshSwitcherMonitorCombo(hDlg, settings.SwitcherMonitor);
 
     // Center the dialog on the screen
     const int screenWidth = GetSystemMetrics(SM_CXSCREEN);

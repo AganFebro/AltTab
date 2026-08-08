@@ -30,6 +30,12 @@ Known Issues
     font, color, match-highlight, and transparency values.
   > High Contrast uses Windows system colors.
 
++ Added configurable switcher monitor placement.
+  > Automatic mode follows the foreground application, while a fixed display
+    keeps the switcher on the selected physical monitor.
+  > Disconnected fixed displays fall back to the primary monitor and are
+    restored automatically when they reconnect.
+
 + Modernized tray and switcher context menus using native owner-drawn HMENU
   sessions. Keyboard navigation, checks, disabled states, accelerators,
   submenus, focus, dismissal, and command IDs are preserved.

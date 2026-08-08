@@ -31,6 +31,7 @@ configure_file(
 
 set(ALTTAB_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/source")
 set(ALTTAB_COMMON_SOURCES
+    "${ALTTAB_SOURCE_DIR}/AltTabMonitor.cpp"
     "${ALTTAB_SOURCE_DIR}/AltTabSettings.cpp"
     "${ALTTAB_SOURCE_DIR}/AltTabTheme.cpp"
     "${ALTTAB_SOURCE_DIR}/AltTabMenu.cpp"
@@ -44,6 +45,7 @@ set(ALTTAB_COMMON_SOURCES
 )
 set(ALTTAB_COMMON_HEADERS
     "${ALTTAB_SOURCE_DIR}/AltTab.h"
+    "${ALTTAB_SOURCE_DIR}/AltTabMonitor.h"
     "${ALTTAB_SOURCE_DIR}/AltTabSettings.h"
     "${ALTTAB_SOURCE_DIR}/AltTabTheme.h"
     "${ALTTAB_SOURCE_DIR}/AltTabMenu.h"
@@ -69,6 +71,7 @@ set(ALTTAB_WINDOWS_LIBRARIES
     comctl32
     Dwmapi
     Shell32
+    Shcore
     Version
     Psapi
     Taskschd
@@ -169,6 +172,18 @@ if(BUILD_TESTING)
     target_link_libraries(AltTabThemeTests PRIVATE Dwmapi advapi32 user32 gdi32)
     set_target_properties(AltTabThemeTests PROPERTIES LINKER_TYPE LLD)
     add_test(NAME AltTabThemeTests COMMAND AltTabThemeTests)
+
+    add_executable(AltTabMonitorTests
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/AltTabMonitorTests.cpp"
+        "${ALTTAB_SOURCE_DIR}/AltTabMonitor.cpp"
+        "${ALTTAB_SOURCE_DIR}/AltTabMonitor.h"
+    )
+    target_include_directories(AltTabMonitorTests PRIVATE "${ALTTAB_SOURCE_DIR}")
+    target_compile_definitions(AltTabMonitorTests PRIVATE UNICODE _UNICODE _CRT_SECURE_NO_WARNINGS)
+    target_compile_options(AltTabMonitorTests PRIVATE /EHsc /W4 /permissive-)
+    target_link_libraries(AltTabMonitorTests PRIVATE Shcore user32)
+    set_target_properties(AltTabMonitorTests PROPERTIES LINKER_TYPE LLD)
+    add_test(NAME AltTabMonitorTests COMMAND AltTabMonitorTests)
 endif()
 
 if(ALTTAB_ENABLE_LOGGER)

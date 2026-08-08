@@ -86,6 +86,20 @@ Mode=System
 `ShowProcessName` replaces `ShowColProcessName`. The old key is still accepted when the new key is absent, but AltTab
 saves only the new name.
 
+## Monitor placement
+
+The Settings dialog's `Switcher monitor` dropdown controls where the switcher opens. `Automatic (foreground
+application)` is the default and follows the monitor containing the foreground application. Choosing a specific display
+keeps the switcher centered on that physical monitor, using that monitor's work area and DPI.
+
+Fixed displays are saved by their Windows device identity. If the selected display is disconnected, AltTab temporarily
+uses the primary monitor and returns to the selected display when it reconnects. The equivalent default INI setting is:
+
+```ini
+[General]
+SwitcherMonitor=Automatic
+```
+
 # Features
 * Find the right window faster (filter windows using search string), uses fuzzy string matching algorithm (no need to type the exact search string).
 * Switch between windows of the same application using Alt + \` (Grave Accent / Backtick, the key right above the Tab on a US English keyboard layout).

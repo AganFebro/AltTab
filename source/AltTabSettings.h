@@ -4,6 +4,7 @@
 #include <string>
 #include <wtypes.h>
 #include <wingdi.h>
+#include "AltTabMonitor.h"
 #include "AltTabTheme.h"
 
 using ProcessGroupsList = std::vector<std::unordered_set<std::wstring>>;
@@ -106,6 +107,7 @@ struct AltTabSettings {
     // ----------------------------------------------------------------------------
     int WidthPercentage;                 // Window width in percentage of the actual screen width
     int HeightPercentage;                // Window height in percentage of the actual screen height
+    std::wstring SwitcherMonitor;        // Automatic or a persistent physical-monitor device path
     int WindowWidth;                     // Window width, will be calculated at runtime
     int WindowHeight;                    // Window height, will be calculated at runtime
     int FuzzyMatchPercent;               // Fuzzy match percent
