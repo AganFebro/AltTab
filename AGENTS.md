@@ -69,7 +69,6 @@ Build artifacts are written below `out/`. The optional `AltTabTester` target is 
 | `AltTabMenu.cpp/h` | RAII owner drawing for native tray and window popup menus |
 | `AltTabSettings.cpp/h` | INI parsing, serialization, defaults, and validation |
 | `Logger.cpp/h` | Optional log4cpp wrapper |
-| `CheckForUpdates.cpp/h` | Version checking |
 | `fuzzywuzzy.cpp/h` | Fuzzy string matching |
 | `Utils.cpp/h` | Win32 process and window utilities |
 | `GlobalData.cpp/h` | Global settings instance and access patterns |

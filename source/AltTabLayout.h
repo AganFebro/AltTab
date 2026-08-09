@@ -54,6 +54,21 @@ DockGeometry ResolveDockGeometry(
     DockScale scale,
     DockPosition position);
 
+RECT ResolveDockTileRect(
+    const DockGeometry& geometry,
+    int tileSize,
+    int railHeight,
+    std::size_t itemIndex,
+    int scrollOffset = 0);
+int HitTestDockTile(
+    const DockGeometry& geometry,
+    int tileSize,
+    int railHeight,
+    std::size_t itemCount,
+    int scrollOffset,
+    POINT point);
+int ClampDockScrollOffset(int requestedOffset, int contentWidth, int viewportWidth);
+
 // Returns the horizontal ListView scroll delta needed to reveal an item. The
 // item is centered only when it has crossed a viewport edge.
 int ResolveDockRevealDelta(const RECT& item, const RECT& viewport);

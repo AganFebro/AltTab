@@ -17,8 +17,6 @@
 #include <CommCtrl.h>
 #include "GlobalData.h"
 #include <filesystem>
-#include "CheckForUpdates.h"
-#include <thread>
 
 // ----------------------------------------------------------------------------
 // Global Variables:
@@ -51,7 +49,6 @@ HWND CreateMainWindow(HINSTANCE hInstance);
 BOOL AddNotificationIcon(HWND hWndTrayIcon);
 void DeleteNotificationIcon(HWND hWndTrayIcon);
 void CALLBACK CheckAltKeyIsReleased(HWND hWnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime);
-void CALLBACK CheckForUpdatesTimerCB(HWND hWnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime);
 int GetCurrentYear();
 
 namespace {
@@ -197,16 +194,6 @@ wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPWSTR
 
     HACCEL hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_ALTTAB));
 
-    // Check for updates
-    if (g_Settings.CheckForUpdatesOpt == L"Startup") {
-        std::thread thr(CheckForUpdates, true);
-        thr.detach();
-    } else if (g_Settings.CheckForUpdatesOpt != L"Never") {
-        // Check for every 1 hour
-        const UINT elapse = 3600000;
-        SetTimer(g_hMainWnd, TIMER_CHECK_FOR_UPDATES, elapse, CheckForUpdatesTimerCB);
-    }
-
     MSG msg;
 
     // Main message loop:
@@ -295,10 +282,6 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPar
             AT_LOG_INFO("ID_TRAYCONTEXTMENU_DISABLEALTTAB");
             break;
 
-        case ID_TRAYCONTEXTMENU_CHECKFORUPDATES:
-            AT_LOG_INFO("ID_TRAYCONTEXTMENU_CHECKFORUPDATES");
-            break;
-
         case ID_TRAYCONTEXTMENU_RUNATSTARTUP:
             AT_LOG_INFO("ID_TRAYCONTEXTMENU_RUNATSTARTUP");
             break;
@@ -337,7 +320,6 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPar
 
     case WM_DESTROY:
         AT_LOG_INFO("WM_DESTROY");
-        KillTimer(hWnd, TIMER_CHECK_FOR_UPDATES);
         DeleteNotificationIcon(hWnd);
         break;
 
@@ -386,7 +368,7 @@ BOOL AddNotificationIcon(HWND hWndTrayIcon) {
     nid.uCallbackMessage = WM_USER_ALTTAB_TRAYICON;
     nid.hIcon = LoadIcon(g_hInstance, MAKEINTRESOURCE(IDI_ALTTAB));
 
-    wcscpy_s(nid.szTip, AT_PRODUCT_NAMEW L" v" AT_VERSION_TEXTW); // Tooltip text on mouse hover
+    wcscpy_s(nid.szTip, AT_PRODUCT_NAMEW L" v" AT_PRODUCT_VERSIONW); // Tooltip text on mouse hover
 
     return Shell_NotifyIcon(NIM_ADD, &nid);
 }
@@ -618,28 +600,6 @@ LRESULT CALLBACK LLKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
     return CallNextHookEx(g_KeyboardHook, nCode, wParam, lParam);
 }
 
-// Timer callback function
-void CALLBACK CheckForUpdatesTimerCB(HWND /*hWnd*/, UINT /*uMsg*/, UINT_PTR /*idEvent*/, DWORD /*dwTime*/) {
-    AT_LOG_TRACE;
-    std::wstring frequency = g_Settings.CheckForUpdatesOpt;
-    auto lastCheckTimestamp = ReadLastCheckForUpdatesTS();
-    auto currentTimeStamp = std::chrono::system_clock::now();
-    auto timeDiff = currentTimeStamp - lastCheckTimestamp;
-
-    if ((frequency == L"Daily" && timeDiff >= std::chrono::hours(24))
-        || (frequency == L"Weekly" && timeDiff >= std::chrono::hours(24 * 7))) {
-        // Perform the update check on a background thread so a slow or unreachable
-        // server does not block the message loop (and the low-level keyboard hook
-        // that shares this thread).
-        std::thread(CheckForUpdates, true).detach();
-
-        // Update the last check timestamp
-        WriteCheckForUpdatesTS(currentTimeStamp);
-    } else {
-        AT_LOG_INFO("Update check not required at this time.");
-    }
-}
-
 void CALLBACK CheckAltKeyIsReleased(HWND /*hWnd*/, UINT /*uMsg*/, UINT_PTR /*idEvent*/, DWORD /*dwTime*/) {
     // AT_LOG_TRACE;
     bool isAltPressed = GetAsyncKeyState(VK_MENU) & 0x8000;
@@ -696,15 +656,6 @@ void TrayContextMenuItemHandler(HWND /*hWnd*/, HMENU hSubMenu, UINT menuItemId) 
                 AT_LOG_ERROR("Failed to re-enable the low-level keyboard hook.");
             }
         }
-    } break;
-
-    case ID_TRAYCONTEXTMENU_CHECKFORUPDATES: {
-        AT_LOG_INFO("ID_TRAYCONTEXTMENU_CHECKFORUPDATES");
-        ShowCustomToolTip(L"Checking for updates..., please wait.");
-
-        // Had to run CheckForUpdates in a thread to display the tooltip... :-(
-        std::thread thr(CheckForUpdates, false);
-        thr.detach();
     } break;
 
     case ID_TRAYCONTEXTMENU_RUNATSTARTUP: {

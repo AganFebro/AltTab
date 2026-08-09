@@ -34,6 +34,7 @@ public:
         HWND listView,
         HDC hdc,
         int itemIndex,
+        const RECT& tile,
         HIMAGELIST icons,
         const AltTabSettings& settings,
         int hotItem,
@@ -46,7 +47,7 @@ public:
         const AltTabSettings& settings,
         const std::wstring& searchText,
         int matchCount) const;
-    RECT DockCloseButtonRect(HWND listView, int itemIndex) const;
+    RECT DockCloseButtonRect(const RECT& tile) const;
 
     const ThemeSnapshot& Theme() const {
         return theme_;

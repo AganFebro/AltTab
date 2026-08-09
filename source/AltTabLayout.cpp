@@ -122,13 +122,14 @@ DockGeometry ResolveDockGeometry(
     const int railHeight = scaleDock(76);
     const int captionHeight = scaleDock(38);
     const int panelPadding = scaleDock(12);
-    const int pitch = scaleDock(68) + scaleDock(4);
+    const int tileSize = scaleDock(68);
+    const int tileGap = scaleDock(4);
+    const int pitch = tileSize + tileGap;
     const int minimumWidth = scaleDock(280);
     const int requestedMaximum = MulDiv(workWidth, std::clamp(widthPercentage, 10, 100), 100);
     const int maximumWidth = std::clamp(requestedMaximum, (std::min)(minimumWidth, workWidth), workWidth);
-    // Native icon view arranges by full spacing cells; subtracting the trailing
-    // visual gap makes the final item wrap into a clipped second row.
-    const int itemsWidth = static_cast<int>(itemCount) * pitch;
+    const int itemsWidth =
+        itemCount == 0 ? 0 : static_cast<int>(itemCount) * tileSize + (static_cast<int>(itemCount) - 1) * tileGap;
     const int contentWidth = panelPadding * 2 + itemsWidth;
     const int windowWidth = (std::min)(maximumWidth, (std::max)(minimumWidth, contentWidth));
     const int windowHeight = (std::min)(workHeight, railHeight + captionHeight);
@@ -148,6 +149,43 @@ DockGeometry ResolveDockGeometry(
     geometry.contentWidth = contentWidth;
     geometry.overflow = contentWidth > windowWidth;
     return geometry;
+}
+
+RECT ResolveDockTileRect(
+    const DockGeometry& geometry,
+    int tileSize,
+    int railHeight,
+    std::size_t itemIndex,
+    int scrollOffset) {
+    const int left = geometry.itemsLeft + static_cast<int>(itemIndex) * geometry.itemPitch - scrollOffset;
+    const int top = (railHeight - tileSize) / 2;
+    return {
+        left,
+        top,
+        left + tileSize,
+        top + tileSize,
+    };
+}
+
+int HitTestDockTile(
+    const DockGeometry& geometry,
+    int tileSize,
+    int railHeight,
+    std::size_t itemCount,
+    int scrollOffset,
+    POINT point) {
+    const int relativeX = point.x + scrollOffset - geometry.itemsLeft;
+    if (relativeX < 0 || point.y < 0 || point.y >= railHeight || geometry.itemPitch <= 0)
+        return -1;
+    const std::size_t index = static_cast<std::size_t>(relativeX / geometry.itemPitch);
+    if (index >= itemCount)
+        return -1;
+    const RECT tile = ResolveDockTileRect(geometry, tileSize, railHeight, index, scrollOffset);
+    return PtInRect(&tile, point) ? static_cast<int>(index) : -1;
+}
+
+int ClampDockScrollOffset(int requestedOffset, int contentWidth, int viewportWidth) {
+    return std::clamp(requestedOffset, 0, (std::max)(0, contentWidth - viewportWidth));
 }
 
 int ResolveDockRevealDelta(const RECT& item, const RECT& viewport) {

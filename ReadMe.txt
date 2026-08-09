@@ -80,7 +80,6 @@ Small, and Extra small presets without changing List mode.
   ├───────────────────────────┤
   │ Settings                  │
   │ Disable AltTab            │
-  │ Check for Updates         │
   │ Rut at Startup            │
   │ Rut as Administrator      │
   ├───────────────────────────┤

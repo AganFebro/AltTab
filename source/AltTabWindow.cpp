@@ -29,8 +29,6 @@
 #include "AltTab.h"
 #include "GlobalData.h"
 #include <unordered_map>
-#include "CheckForUpdates.h"
-#include <thread>
 #include <utility>
 #include <windowsx.h>
 #include <shellapi.h>
@@ -55,6 +53,8 @@ bool g_bIgnoreWM_ACTIVATE = false;   // Ignore WM_ACTIVATE with WA_INACTIVE
 
 static std::unique_ptr<SwitcherRenderer> g_SwitcherRenderer;
 static HIMAGELIST g_hRowHeightImageList = nullptr;
+static DockGeometry g_DockGeometry{};
+static bool g_IsUpdatingSwitcher = false;
 
 // Forward declarations of functions included in this code module:
 INT_PTR CALLBACK ATAboutDlgProc(HWND, UINT, WPARAM, LPARAM);
@@ -87,6 +87,14 @@ static void LayoutSwitcherWindow(HWND hWnd);
 static void RebuildSwitcherVisuals(HWND hWnd, UINT dpi);
 static void UpdateDockSearchLayout();
 static void RefreshDockSearch();
+static bool DockHasHorizontalOverflow();
+static int GetDockScrollOffset();
+static void SetDockScrollOffset(int offset);
+static RECT GetDockTileRect(int index);
+static int DockHitTest(POINT point);
+static void PositionDockNativeItems();
+static void PaintDockSurface(HWND listView, HDC hdc);
+static void CommitAltTabWindowSnapshot(std::vector<AltTabWindowData> windows, bool preserveExistingOrder);
 
 std::vector<AltTabWindowData> g_AltTabWindows;
 
@@ -428,6 +436,7 @@ HWND ShowAltTabWindow(HWND& hAltTabWnd, int direction) {
 
     return hAltTabWnd;
 #else
+    bool created = false;
     if (hAltTabWnd == nullptr) {
         // We need this to set the AltTab window active when it is brought to the foreground
         g_hFGWnd = GetForegroundWindow();
@@ -439,15 +448,10 @@ HWND ShowAltTabWindow(HWND& hAltTabWnd, int direction) {
         }
 
         hAltTabWnd = CreateAltTabWindow();
-
-        // SetWindowPos(hAltTabWnd, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
-        SetForegroundWindow(hAltTabWnd);
+        if (!hAltTabWnd)
+            return nullptr;
+        created = true;
     }
-
-    // TODO / FIXME:
-    // Sometimes focus is not set to the search string edit control. Always
-    // set the focus to it for time being.
-    SetFocus(g_hSearchString);
 
     // Move to next / previous item based on the direction
     const int selectedInd = (int)SendMessageW(g_hListView, LVM_GETNEXTITEM, (WPARAM)-1, LVNI_SELECTED);
@@ -463,6 +467,17 @@ HWND ShowAltTabWindow(HWND& hAltTabWnd, int direction) {
 
     ATWListViewSelectItem(nextInd);
 
+    if (created) {
+        SetWindowPos(hAltTabWnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+        SetForegroundWindow(hAltTabWnd);
+        RedrawWindow(hAltTabWnd, nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_UPDATENOW);
+    }
+
+    // Keep the hidden native edit focused for caret, keyboard, and IME behavior.
+    SetFocus(g_hSearchString);
+    if (g_Settings.Layout == SwitcherLayout::Dock)
+        HideCaret(g_hSearchString);
+
     TRACKMOUSEEVENT tme;
     tme.cbSize = sizeof(tme);
     tme.dwFlags = TME_LEAVE;
@@ -476,20 +491,39 @@ HWND ShowAltTabWindow(HWND& hAltTabWnd, int direction) {
 void RefreshAltTabWindow() {
     AT_LOG_TRACE;
 
-    // Clear the list
-    ListView_DeleteAllItems(g_hListView);
-    g_AltTabWindows.clear();
+    CommitAltTabWindowSnapshot(GetAltTabWindows(), false);
+}
 
-    // Enumerate windows
-    EnumWindows(EnumWindowsProc, (LPARAM)(&g_AltTabWindows));
+static void CommitAltTabWindowSnapshot(std::vector<AltTabWindowData> windows, bool preserveExistingOrder) {
+    HWND selectedWindow = nullptr;
+    if (g_SelectedIndex >= 0 && g_SelectedIndex < static_cast<int>(g_AltTabWindows.size()))
+        selectedWindow = g_AltTabWindows[g_SelectedIndex].hWnd;
+    const int previousIndex = g_SelectedIndex;
+    const int previousDockScroll = GetDockScrollOffset();
 
-    // Identify the processes which are running from different paths
+    if (preserveExistingOrder && !g_AltTabWindows.empty()) {
+        std::unordered_map<HWND, std::size_t> existingOrder;
+        for (std::size_t index = 0; index < g_AltTabWindows.size(); ++index)
+            existingOrder[g_AltTabWindows[index].hWnd] = index;
+        const std::size_t newItemRank = existingOrder.size();
+        std::stable_sort(windows.begin(), windows.end(), [&](const auto& left, const auto& right) {
+            const auto leftIt = existingOrder.find(left.hWnd);
+            const auto rightIt = existingOrder.find(right.hWnd);
+            const std::size_t leftRank = leftIt == existingOrder.end() ? newItemRank : leftIt->second;
+            const std::size_t rightRank = rightIt == existingOrder.end() ? newItemRank : rightIt->second;
+            return leftRank < rightRank;
+        });
+        if (windows == g_AltTabWindows)
+            return;
+    }
+
+    // Identify processes running from different paths before touching the live control.
     std::unordered_map<std::wstring, std::unordered_set<std::wstring>> processMap;
-    for (const auto& item : g_AltTabWindows) {
+    for (const auto& item : windows) {
         const std::wstring key = item.ProcessName + item.Title;
         processMap[key].insert(item.FullPath);
     }
-    for (auto& item : g_AltTabWindows) {
+    for (auto& item : windows) {
         const std::wstring key = item.ProcessName + item.Title;
         if (processMap[key].size() > 1) {
             item.IsConflictProcess = true;
@@ -502,24 +536,35 @@ void RefreshAltTabWindow() {
                                              : (dock ? 52 : 32);
     const int rowHeight = g_SwitcherRenderer ? g_SwitcherRenderer->Theme().metrics.rowHeight : 52;
 
-    if (g_hRowHeightImageList) {
-        ListView_SetImageList(g_hListView, nullptr, LVSIL_SMALL);
-        ImageList_Destroy(std::exchange(g_hRowHeightImageList, nullptr));
-    }
-    if (g_hLVImageList) {
-        ListView_SetImageList(g_hListView, nullptr, LVSIL_NORMAL);
-        ImageList_Destroy(std::exchange(g_hLVImageList, nullptr));
-    }
-
     HIMAGELIST hImageListDummy = dock ? nullptr : ImageList_Create(1, rowHeight, ILC_COLOR32, 1, 1);
     HIMAGELIST hImageList = ImageList_Create(imageSize, imageSize, ILC_COLOR32 | ILC_MASK, 0, 1);
+    if (!hImageList || (!dock && !hImageListDummy)) {
+        if (hImageListDummy)
+            ImageList_Destroy(hImageListDummy);
+        if (hImageList)
+            ImageList_Destroy(hImageList);
+        AT_LOG_ERROR("Failed to build replacement ListView image lists");
+        return;
+    }
 
-    for (const auto& item : g_AltTabWindows) {
+    for (const auto& item : windows) {
         if (dock)
             AddBestIcon(hImageList, item, imageSize);
         else
             ImageList_AddIcon(hImageList, item.hIcon);
     }
+
+    g_IsUpdatingSwitcher = true;
+    if (g_hAltTabWnd)
+        SendMessageW(g_hAltTabWnd, WM_SETREDRAW, FALSE, 0);
+    SendMessageW(g_hListView, WM_SETREDRAW, FALSE, 0);
+
+    HIMAGELIST oldRowHeightImageList = std::exchange(g_hRowHeightImageList, nullptr);
+    HIMAGELIST oldImageList = std::exchange(g_hLVImageList, nullptr);
+    ListView_SetImageList(g_hListView, nullptr, LVSIL_SMALL);
+    ListView_SetImageList(g_hListView, nullptr, LVSIL_NORMAL);
+    ListView_DeleteAllItems(g_hListView);
+    g_AltTabWindows = std::move(windows);
 
     if (dock) {
         ListView_SetImageList(g_hListView, hImageList, LVSIL_NORMAL);
@@ -529,15 +574,49 @@ void RefreshAltTabWindow() {
     }
     g_hLVImageList = hImageList;
 
+    if (oldRowHeightImageList)
+        ImageList_Destroy(oldRowHeightImageList);
+    if (oldImageList)
+        ImageList_Destroy(oldImageList);
+
     // Add windows to ListView
-    for (int i = 0; i < g_AltTabWindows.size(); ++i) {
+    for (int i = 0; i < static_cast<int>(g_AltTabWindows.size()); ++i) {
         AddListViewItem(g_hListView, i, g_AltTabWindows[i]);
     }
 
-    // Select the previously selected item
-    ATWListViewSelectItem(g_SelectedIndex);
-    if (g_hAltTabWnd)
+    g_SelectedIndex =
+        g_AltTabWindows.empty() ? -1 : std::clamp(previousIndex, 0, static_cast<int>(g_AltTabWindows.size()) - 1);
+    if (selectedWindow) {
+        const auto selected =
+            std::find_if(g_AltTabWindows.begin(), g_AltTabWindows.end(), [selectedWindow](const auto& item) {
+                return item.hWnd == selectedWindow;
+            });
+        if (selected != g_AltTabWindows.end())
+            g_SelectedIndex = static_cast<int>(selected - g_AltTabWindows.begin());
+    }
+
+    if (g_hAltTabWnd) {
         LayoutSwitcherWindow(g_hAltTabWnd);
+        if (!dock)
+            ATWListViewSelectItem(g_SelectedIndex);
+    } else {
+        ATWListViewSelectItem(g_SelectedIndex);
+    }
+
+    if (dock)
+        SetDockScrollOffset(previousDockScroll);
+    g_nLVHotItem = -1;
+    g_MouseHoverIndex = -1;
+    g_IsMouseOverCloseButton = false;
+    g_rcBtnClose = {};
+
+    g_IsUpdatingSwitcher = false;
+    SendMessageW(g_hListView, WM_SETREDRAW, TRUE, 0);
+    if (g_hAltTabWnd) {
+        SendMessageW(g_hAltTabWnd, WM_SETREDRAW, TRUE, 0);
+        if (IsWindowVisible(g_hAltTabWnd))
+            RedrawWindow(g_hAltTabWnd, nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_UPDATENOW);
+    }
 }
 
 void ATWListViewSelectItem(int rowNumber) {
@@ -547,7 +626,8 @@ void ATWListViewSelectItem(int rowNumber) {
     }
 
     const bool dock = g_Settings.Layout == SwitcherLayout::Dock;
-    if (dock)
+    const bool dockOverflow = dock && DockHasHorizontalOverflow();
+    if (dock && !g_IsUpdatingSwitcher)
         SendMessageW(g_hListView, WM_SETREDRAW, FALSE, 0);
 
     int selectedInd = (int)SendMessageW(g_hListView, LVM_GETNEXTITEM, (WPARAM)-1, LVNI_SELECTED);
@@ -565,20 +645,23 @@ void ATWListViewSelectItem(int rowNumber) {
 
     g_SelectedIndex = rowNumber;
     if (dock) {
-        RECT item{};
         RECT viewport{};
         GetClientRect(g_hAltTabWnd, &viewport);
         if (g_SwitcherRenderer)
             viewport.bottom = g_SwitcherRenderer->Theme().metrics.dockRailHeight;
-        if (ListView_GetItemRect(g_hListView, rowNumber, &item, LVIR_ICON)) {
-            const int delta = ResolveDockRevealDelta(item, viewport);
+        if (dockOverflow) {
+            const int delta = ResolveDockRevealDelta(GetDockTileRect(rowNumber), viewport);
             if (delta)
-                SendMessageW(g_hListView, LVM_SCROLL, delta, 0);
+                SetDockScrollOffset(GetDockScrollOffset() + delta);
+        } else if (!dockOverflow) {
+            SetDockScrollOffset(0);
         }
-        SendMessageW(g_hListView, WM_SETREDRAW, TRUE, 0);
-        RedrawWindow(g_hListView, nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN);
-        if (g_hAltTabWnd)
-            InvalidateRect(g_hAltTabWnd, nullptr, FALSE);
+        if (!g_IsUpdatingSwitcher) {
+            SendMessageW(g_hListView, WM_SETREDRAW, TRUE, 0);
+            RedrawWindow(g_hListView, nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN);
+            if (g_hAltTabWnd)
+                InvalidateRect(g_hAltTabWnd, nullptr, FALSE);
+        }
     }
 }
 
@@ -672,13 +755,6 @@ HWND CreateAltTabWindow() {
         return nullptr;
     }
 
-    // Show the window and bring to the top
-    SetForegroundWindow(hWnd);
-    SetWindowPos(hWnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
-    ShowWindow(hWnd, SW_SHOWNORMAL);
-    UpdateWindow(hWnd);
-    BringWindowToTop(hWnd);
-
     return hWnd;
 }
 
@@ -734,18 +810,145 @@ static void RefreshDockSearch() {
     InvalidateRect(g_hAltTabWnd, nullptr, FALSE);
 }
 
+static bool DockHasHorizontalOverflow() {
+    return g_Settings.Layout == SwitcherLayout::Dock && g_DockGeometry.overflow;
+}
+
+static int GetDockScrollOffset() {
+    POINT origin{};
+    return g_hListView && ListView_GetOrigin(g_hListView, &origin) ? (std::max)(0L, origin.x) : 0;
+}
+
+static void SetDockScrollOffset(int offset) {
+    if (!g_hListView)
+        return;
+    const int viewportWidth = g_DockGeometry.window.right - g_DockGeometry.window.left;
+    const int target = ClampDockScrollOffset(offset, g_DockGeometry.contentWidth, viewportWidth);
+    const int current = GetDockScrollOffset();
+    if (target != current)
+        SendMessageW(g_hListView, LVM_SCROLL, target - current, 0);
+}
+
+static RECT GetDockTileRect(int index) {
+    if (!g_SwitcherRenderer || index < 0)
+        return {};
+    const ThemeMetrics& metrics = g_SwitcherRenderer->Theme().metrics;
+    return ResolveDockTileRect(
+        g_DockGeometry,
+        metrics.dockTileSize,
+        metrics.dockRailHeight,
+        static_cast<std::size_t>(index),
+        GetDockScrollOffset());
+}
+
+static int DockHitTest(POINT point) {
+    if (!g_SwitcherRenderer)
+        return -1;
+    const ThemeMetrics& metrics = g_SwitcherRenderer->Theme().metrics;
+    return HitTestDockTile(
+        g_DockGeometry,
+        metrics.dockTileSize,
+        metrics.dockRailHeight,
+        static_cast<std::size_t>(ListView_GetItemCount(g_hListView)),
+        GetDockScrollOffset(),
+        point);
+}
+
+static void PositionDockNativeItems() {
+    if (!g_hListView || !g_SwitcherRenderer)
+        return;
+    const ThemeMetrics& metrics = g_SwitcherRenderer->Theme().metrics;
+    const int itemCount = ListView_GetItemCount(g_hListView);
+    for (int index = 0; index < itemCount; ++index) {
+        const RECT tile = ResolveDockTileRect(
+            g_DockGeometry, metrics.dockTileSize, metrics.dockRailHeight, static_cast<std::size_t>(index));
+        const POINT desiredIcon{
+            (tile.left + tile.right - metrics.dockIconSize) / 2,
+            (tile.top + tile.bottom - metrics.dockIconSize) / 2,
+        };
+        ListView_SetItemPosition32(g_hListView, index, tile.left, tile.top);
+
+        RECT nativeIcon{};
+        POINT nativePosition{};
+        if (ListView_GetItemRect(g_hListView, index, &nativeIcon, LVIR_ICON)
+            && ListView_GetItemPosition(g_hListView, index, &nativePosition)) {
+            ListView_SetItemPosition32(
+                g_hListView,
+                index,
+                nativePosition.x + desiredIcon.x - nativeIcon.left,
+                nativePosition.y + desiredIcon.y - nativeIcon.top);
+        }
+    }
+}
+
+static void PaintDockSurface(HWND listView, HDC hdc) {
+    if (!g_SwitcherRenderer || !hdc)
+        return;
+    const int width = g_DockGeometry.window.right - g_DockGeometry.window.left;
+    const int height = g_DockGeometry.window.bottom - g_DockGeometry.window.top;
+    if (width <= 0 || height <= 0)
+        return;
+
+    const RECT surface{ 0, 0, width, height };
+    const auto paint = [&](HDC target) {
+        g_SwitcherRenderer->PaintPanel(listView, target, surface, false, SwitcherLayout::Dock);
+        g_rcBtnClose = {};
+        const int itemCount = ListView_GetItemCount(listView);
+        for (int index = 0; index < itemCount; ++index) {
+            const RECT tile = GetDockTileRect(index);
+            if (tile.right <= surface.left || tile.left >= surface.right)
+                continue;
+            g_SwitcherRenderer->DrawDockItem(
+                listView,
+                target,
+                index,
+                tile,
+                g_hLVImageList,
+                g_Settings,
+                g_nLVHotItem,
+                g_IsMouseOverCloseButton,
+                g_rcBtnClose);
+        }
+
+        const int selected = ATWListViewGetSelectedItem();
+        const int captionIndex = g_nLVHotItem >= 0 ? g_nLVHotItem : selected;
+        const AltTabWindowData* window = captionIndex >= 0 && captionIndex < static_cast<int>(g_AltTabWindows.size())
+                                             ? &g_AltTabWindows[captionIndex]
+                                             : nullptr;
+        const RECT caption{ 0, g_SwitcherRenderer->Theme().metrics.dockRailHeight, width, height };
+        g_SwitcherRenderer->DrawDockCaption(
+            target, caption, window, g_Settings, g_SearchString, static_cast<int>(g_AltTabWindows.size()));
+    };
+
+    HDC buffer = CreateCompatibleDC(hdc);
+    HBITMAP bitmap = buffer ? CreateCompatibleBitmap(hdc, width, height) : nullptr;
+    if (!buffer || !bitmap) {
+        if (bitmap)
+            DeleteObject(bitmap);
+        if (buffer)
+            DeleteDC(buffer);
+        paint(hdc);
+        return;
+    }
+    HGDIOBJ oldBitmap = SelectObject(buffer, bitmap);
+    paint(buffer);
+    BitBlt(hdc, 0, 0, width, height, buffer, 0, 0, SRCCOPY);
+    SelectObject(buffer, oldBitmap);
+    DeleteObject(bitmap);
+    DeleteDC(buffer);
+}
+
 static void UpdateDockHotItem(HWND listView, POINT point) {
     if (g_Settings.Layout != SwitcherLayout::Dock || !g_SwitcherRenderer)
         return;
-    LVHITTESTINFO hit{};
-    hit.pt = point;
-    const int item = ListView_HitTest(listView, &hit);
+    const int item = DockHitTest(point);
     const int oldItem = g_nLVHotItem;
     const bool oldCloseHover = g_IsMouseOverCloseButton;
     g_nLVHotItem = item;
     g_MouseHoverIndex = item;
-    g_rcBtnClose =
-        g_Settings.ShowDeleteButton && item >= 0 ? g_SwitcherRenderer->DockCloseButtonRect(listView, item) : RECT{};
+    g_rcBtnClose = g_Settings.ShowDeleteButton && item >= 0
+                       ? g_SwitcherRenderer->DockCloseButtonRect(GetDockTileRect(item))
+                       : RECT{};
     g_IsMouseOverCloseButton = item >= 0 && PtInRect(&g_rcBtnClose, point);
     if (oldItem != item || oldCloseHover != g_IsMouseOverCloseButton) {
         InvalidateRect(listView, nullptr, FALSE);
@@ -1045,6 +1248,28 @@ LRESULT CALLBACK ListViewSubclassProc(
     }
 
     switch (uMsg) {
+    case WM_ERASEBKGND:
+        if (g_Settings.Layout == SwitcherLayout::Dock)
+            return TRUE;
+        break;
+
+    case WM_PAINT:
+        if (g_Settings.Layout == SwitcherLayout::Dock) {
+            PAINTSTRUCT paint{};
+            HDC hdc = BeginPaint(hListView, &paint);
+            PaintDockSurface(hListView, hdc);
+            EndPaint(hListView, &paint);
+            return 0;
+        }
+        break;
+
+    case WM_PRINTCLIENT:
+        if (g_Settings.Layout == SwitcherLayout::Dock) {
+            PaintDockSurface(hListView, reinterpret_cast<HDC>(wParam));
+            return 0;
+        }
+        break;
+
     case WM_NOTIFY: {
         AT_LOG_INFO("WM_NOTIFY");
     } break;
@@ -1081,16 +1306,14 @@ LRESULT CALLBACK ListViewSubclassProc(
     case WM_MOUSEWHEEL:
     case WM_MOUSEHWHEEL:
         if (g_Settings.Layout == SwitcherLayout::Dock && g_SwitcherRenderer) {
-            const int notches = GET_WHEEL_DELTA_WPARAM(wParam) / WHEEL_DELTA;
-            const int direction = uMsg == WM_MOUSEWHEEL ? -1 : 1;
-            SendMessageW(
-                hListView,
-                LVM_SCROLL,
-                direction * notches
-                    * (g_SwitcherRenderer->Theme().metrics.dockTileSize
-                       + g_SwitcherRenderer->Theme().metrics.dockTileGap),
-                0);
-            InvalidateRect(hListView, nullptr, FALSE);
+            if (DockHasHorizontalOverflow()) {
+                const int notches = GET_WHEEL_DELTA_WPARAM(wParam) / WHEEL_DELTA;
+                const int direction = uMsg == WM_MOUSEWHEEL ? -1 : 1;
+                const int pitch =
+                    g_SwitcherRenderer->Theme().metrics.dockTileSize + g_SwitcherRenderer->Theme().metrics.dockTileGap;
+                SetDockScrollOffset(GetDockScrollOffset() + direction * notches * pitch);
+                InvalidateRect(hListView, nullptr, FALSE);
+            }
             return 0;
         }
         break;
@@ -1119,25 +1342,8 @@ INT_PTR CALLBACK AltTabWindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lP
         HDC hdc = BeginPaint(hWnd, &paint);
         RECT client{};
         GetClientRect(hWnd, &client);
-        if (g_SwitcherRenderer) {
+        if (g_SwitcherRenderer)
             g_SwitcherRenderer->PaintPanel(hWnd, hdc, client, g_Settings.ShowSearchString, g_Settings.Layout);
-            if (g_Settings.Layout == SwitcherLayout::Dock) {
-                const int selected = ATWListViewGetSelectedItem();
-                const int captionIndex = g_nLVHotItem >= 0 ? g_nLVHotItem : selected;
-                const AltTabWindowData* window =
-                    captionIndex >= 0 && captionIndex < static_cast<int>(g_AltTabWindows.size())
-                        ? &g_AltTabWindows[captionIndex]
-                        : nullptr;
-                RECT caption{
-                    0,
-                    g_SwitcherRenderer->Theme().metrics.dockRailHeight,
-                    client.right,
-                    client.bottom,
-                };
-                g_SwitcherRenderer->DrawDockCaption(
-                    hdc, caption, window, g_Settings, g_SearchString, static_cast<int>(g_AltTabWindows.size()));
-            }
-        }
         EndPaint(hWnd, &paint);
         return 0;
     }
@@ -1271,10 +1477,11 @@ HWND GetOwnerWindowHwnd(HWND hWnd) {
  * \brief Show AltTab window's context menu at the center of the selected item.
  */
 void ShowContextMenuAtItemCenter() {
-    // Get the position of the selected item
-    // Get the bounding rectangle of the selected item
-    RECT itemRect;
-    ListView_GetItemRect(g_hListView, g_SelectedIndex, &itemRect, LVIR_BOUNDS);
+    RECT itemRect{};
+    if (g_Settings.Layout == SwitcherLayout::Dock)
+        itemRect = GetDockTileRect(g_SelectedIndex);
+    else
+        ListView_GetItemRect(g_hListView, g_SelectedIndex, &itemRect, LVIR_BOUNDS);
 
     // Calculate the center of the entire row
     POINT center;
@@ -1497,17 +1704,6 @@ void ContextMenuItemHandler(HWND hWnd, HMENU /*hSubMenu*/, UINT menuItemId) {
         AT_LOG_INFO("ID_TRAYCONTEXTMENU_RELEASENOTES");
         ShowReleaseNotesWindow();
         break;
-
-    case ID_TRAYCONTEXTMENU_CHECKFORUPDATES: {
-        AT_LOG_INFO("ID_TRAYCONTEXTMENU_CHECKFORUPDATES");
-        DestroyAltTabWindow();
-        HideCustomToolTip();
-        ShowCustomToolTip(L"Checking for updates..., please wait.");
-
-        // Had to run CheckForUpdates in a thread to display the tooltip... :-(
-        std::thread thr(CheckForUpdates, false);
-        thr.detach(); // Let the thread run independently, otherwise tooltip won't be displayed.
-    } break;
 
     case ID_TRAYCONTEXTMENU_RELOADALTTABSETTINGS: {
         AT_LOG_INFO("ID_TRAYCONTEXTMENU_RELOADALTTABSETTINGS");
@@ -1733,27 +1929,21 @@ static void LayoutSwitcherWindow(HWND hWnd) {
             static_cast<std::size_t>(ListView_GetItemCount(g_hListView)),
             g_Settings.DockSize,
             g_Settings.DockPlacement);
+        g_DockGeometry = geometry;
         const int windowWidth = geometry.window.right - geometry.window.left;
         const int windowHeight = geometry.window.bottom - geometry.window.top;
         g_Settings.WindowWidth = windowWidth;
         g_Settings.WindowHeight = windowHeight;
         SetWindowPos(
-            hWnd,
-            HWND_TOPMOST,
-            geometry.window.left,
-            geometry.window.top,
-            windowWidth,
-            windowHeight,
-            SWP_NOACTIVATE | SWP_SHOWWINDOW);
+            hWnd, HWND_TOPMOST, geometry.window.left, geometry.window.top, windowWidth, windowHeight, SWP_NOACTIVATE);
 
-        SendMessageW(g_hListView, WM_SETREDRAW, FALSE, 0);
-        POINT origin{};
-        if (ListView_GetOrigin(g_hListView, &origin) && (origin.x != 0 || origin.y != 0))
-            SendMessageW(g_hListView, LVM_SCROLL, -origin.x, -origin.y);
+        if (!g_IsUpdatingSwitcher)
+            SendMessageW(g_hListView, WM_SETREDRAW, FALSE, 0);
+        SetDockScrollOffset(0);
 
-        HRGN visibleRegion = CreateRectRgn(0, 0, windowWidth, metrics.dockRailHeight);
+        HRGN visibleRegion = CreateRectRgn(0, 0, windowWidth, windowHeight);
         int listWidth = windowWidth;
-        int listHeight = metrics.dockRailHeight;
+        int listHeight = windowHeight;
         if (visibleRegion && SetWindowRgn(g_hListView, visibleRegion, FALSE)) {
             constexpr int scrollbarGuard = 2;
             listWidth += GetSystemMetricsForDpi(SM_CXVSCROLL, g_SwitcherRenderer->Theme().dpi) + scrollbarGuard;
@@ -1764,17 +1954,20 @@ static void LayoutSwitcherWindow(HWND hWnd) {
             ShowScrollBar(g_hListView, SB_BOTH, FALSE);
         }
         SetWindowPos(g_hListView, nullptr, 0, 0, listWidth, listHeight, SWP_NOZORDER | SWP_SHOWWINDOW);
-        RECT workArea{
-            geometry.itemsLeft, 0, geometry.itemsLeft + (std::max)(1, geometry.itemsWidth) + 1, metrics.dockRailHeight
-        };
+        RECT workArea{ 0, 0, (std::max)(windowWidth, geometry.contentWidth) + 1, metrics.dockRailHeight };
         SendMessageW(g_hListView, LVM_SETWORKAREAS, 1, reinterpret_cast<LPARAM>(&workArea));
         ListView_SetIconSpacing(g_hListView, metrics.dockTileSize + metrics.dockTileGap, metrics.dockRailHeight);
-        ListView_Arrange(g_hListView, LVA_DEFAULT);
+        PositionDockNativeItems();
         ATWListViewSelectItem(g_SelectedIndex);
-        SendMessageW(g_hListView, WM_SETREDRAW, TRUE, 0);
+        if (!geometry.overflow)
+            SetDockScrollOffset(0);
+        if (!g_IsUpdatingSwitcher)
+            SendMessageW(g_hListView, WM_SETREDRAW, TRUE, 0);
         UpdateDockSearchLayout();
-        InvalidateRect(hWnd, nullptr, FALSE);
-        InvalidateRect(g_hListView, nullptr, FALSE);
+        if (!g_IsUpdatingSwitcher) {
+            InvalidateRect(hWnd, nullptr, FALSE);
+            InvalidateRect(g_hListView, nullptr, FALSE);
+        }
         return;
     }
 
@@ -1795,7 +1988,7 @@ static void LayoutSwitcherWindow(HWND hWnd) {
 
     g_Settings.WindowWidth = windowWidth;
     g_Settings.WindowHeight = windowHeight;
-    SetWindowPos(hWnd, HWND_TOPMOST, x, y, windowWidth, windowHeight, SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    SetWindowPos(hWnd, HWND_TOPMOST, x, y, windowWidth, windowHeight, SWP_NOACTIVATE);
 
     const int contentWidth = windowWidth - metrics.panelPadding * 2;
     if (g_Settings.ShowSearchString) {
@@ -1915,7 +2108,7 @@ BOOL ATW_OnCreate(HWND hWnd, LPCREATESTRUCT /*lpCreateStruct*/) {
 
     const DWORD listStyle =
         WS_CHILD | WS_VISIBLE | LVS_SHOWSELALWAYS | LVS_SHAREIMAGELISTS | LVS_SINGLESEL
-        | (g_Settings.Layout == SwitcherLayout::Dock ? (LVS_ICON | LVS_ALIGNTOP | LVS_AUTOARRANGE | LVS_NOLABELWRAP)
+        | (g_Settings.Layout == SwitcherLayout::Dock ? (LVS_ICON | LVS_ALIGNTOP | LVS_NOLABELWRAP)
                                                      : (LVS_REPORT | LVS_OWNERDRAWFIXED | LVS_NOCOLUMNHEADER));
     g_hListView = CreateWindowExW(
         0, WC_LISTVIEWW, L"", listStyle, 0, 0, 0, 0, hWnd, reinterpret_cast<HMENU>(IDC_LISTVIEW), g_hInstance, nullptr);
@@ -1925,13 +2118,6 @@ BOOL ATW_OnCreate(HWND hWnd, LPCREATESTRUCT /*lpCreateStruct*/) {
     CustomizeListView(g_hListView, monitor.dpi);
     RebuildSwitcherVisuals(hWnd, monitor.dpi);
     RefreshAltTabWindow();
-    LayoutSwitcherWindow(hWnd);
-
-    SetForegroundWindow(hWnd);
-    SetFocus(g_hSearchString);
-    if (g_Settings.Layout == SwitcherLayout::Dock)
-        HideCaret(g_hSearchString);
-    ATWListViewSelectItem(0);
     SetTimer(hWnd, TIMER_WINDOW_COUNT, TIMER_WINDOW_COUNT_ELAPSE, nullptr);
     return TRUE;
 }
@@ -1973,10 +2159,17 @@ void ATW_OnCommand(HWND /*hwnd*/, int id, HWND /*hwndCtl*/, UINT /*codeNotify*/)
     }
 }
 
-void ATW_OnContextMenu(HWND hwnd, HWND /*hwndContext*/, UINT xPos, UINT yPos) {
+void ATW_OnContextMenu(HWND hwnd, HWND hwndContext, UINT xPos, UINT yPos) {
     AT_LOG_TRACE;
 
     POINT pt = { (LONG)xPos, (LONG)yPos };
+    if (g_Settings.Layout == SwitcherLayout::Dock && hwndContext == g_hListView && xPos != static_cast<UINT>(-1)) {
+        POINT clientPoint = pt;
+        ScreenToClient(g_hListView, &clientPoint);
+        const int item = DockHitTest(clientPoint);
+        if (item >= 0)
+            ATWListViewSelectItem(item);
+    }
     ShowContextMenu(hwnd, pt);
 }
 
@@ -2034,7 +2227,7 @@ void ATW_OnTimer(HWND /*hwnd*/, UINT /*id*/) {
         }
     }
     if (doRefresh) {
-        RefreshAltTabWindow();
+        CommitAltTabWindowSnapshot(std::move(altTabWindows), true);
     }
 }
 
@@ -2068,6 +2261,11 @@ void ATW_OnDestroy(HWND hwnd) {
     g_SwitcherRenderer.reset();
     g_hSearchString = nullptr;
     g_hListView = nullptr;
+    g_DockGeometry = {};
+    g_IsUpdatingSwitcher = false;
+    g_nLVHotItem = -1;
+    g_MouseHoverIndex = -1;
+    g_IsMouseOverCloseButton = false;
     g_rcBtnClose = {};
 }
 
@@ -2094,25 +2292,6 @@ void ATW_OnDrawItem(HWND /*hwnd*/, const DRAWITEMSTRUCT* lpDrawItem) {
 }
 
 LRESULT ATW_OnNotify(HWND /*hwnd*/, int /*idFrom*/, NMHDR* pnmhdr) {
-    if (pnmhdr->hwndFrom == g_hListView && pnmhdr->code == NM_CUSTOMDRAW && g_Settings.Layout == SwitcherLayout::Dock
-        && g_SwitcherRenderer) {
-        auto* draw = reinterpret_cast<NMLVCUSTOMDRAW*>(pnmhdr);
-        if (draw->nmcd.dwDrawStage == CDDS_PREPAINT)
-            return CDRF_NOTIFYITEMDRAW;
-        if (draw->nmcd.dwDrawStage == CDDS_ITEMPREPAINT) {
-            g_SwitcherRenderer->DrawDockItem(
-                g_hListView,
-                draw->nmcd.hdc,
-                static_cast<int>(draw->nmcd.dwItemSpec),
-                g_hLVImageList,
-                g_Settings,
-                g_nLVHotItem,
-                g_IsMouseOverCloseButton,
-                g_rcBtnClose);
-            return CDRF_SKIPDEFAULT;
-        }
-    }
-
     if (pnmhdr->hwndFrom == g_hListView && pnmhdr->code == LVN_HOTTRACK) {
         LPNMLISTVIEW pnmListView = reinterpret_cast<LPNMLISTVIEW>(pnmhdr);
 
@@ -2126,7 +2305,9 @@ LRESULT ATW_OnNotify(HWND /*hwnd*/, int /*idFrom*/, NMHDR* pnmhdr) {
         ScreenToClient(g_hListView, &pt);
         const POINT ptClientPos = pt;
 
-        if (pnmListView->iItem < 0) {
+        if (g_Settings.Layout == SwitcherLayout::Dock) {
+            pnmListView->iItem = DockHitTest(ptClientPos);
+        } else if (pnmListView->iItem < 0) {
             LVHITTESTINFO ht = { 0 };
             ht.pt = ptClientPos;
             if (ListView_SubItemHitTest(g_hListView, &ht) != -1) {
@@ -2138,7 +2319,7 @@ LRESULT ATW_OnNotify(HWND /*hwnd*/, int /*idFrom*/, NMHDR* pnmhdr) {
         // rectangle never leaks from the previously hot row.
         if (g_Settings.ShowDeleteButton && pnmListView->iItem >= 0 && g_SwitcherRenderer) {
             if (g_Settings.Layout == SwitcherLayout::Dock) {
-                g_rcBtnClose = g_SwitcherRenderer->DockCloseButtonRect(g_hListView, pnmListView->iItem);
+                g_rcBtnClose = g_SwitcherRenderer->DockCloseButtonRect(GetDockTileRect(pnmListView->iItem));
             } else {
                 RECT rowRect{};
                 ListView_GetItemRect(g_hListView, pnmListView->iItem, &rowRect, LVIR_BOUNDS);
@@ -2179,14 +2360,20 @@ LRESULT ATW_OnNotify(HWND /*hwnd*/, int /*idFrom*/, NMHDR* pnmhdr) {
 
             // Invalidate only old + new row
             if (oldItem >= 0) {
-                RECT rc;
-                ListView_GetItemRect(g_hListView, oldItem, &rc, LVIR_BOUNDS);
+                RECT rc{};
+                if (g_Settings.Layout == SwitcherLayout::Dock)
+                    rc = GetDockTileRect(oldItem);
+                else
+                    ListView_GetItemRect(g_hListView, oldItem, &rc, LVIR_BOUNDS);
                 InvalidateRect(g_hListView, &rc, FALSE);
             }
 
             if (g_nLVHotItem >= 0) {
-                RECT rc;
-                ListView_GetItemRect(g_hListView, g_nLVHotItem, &rc, LVIR_BOUNDS);
+                RECT rc{};
+                if (g_Settings.Layout == SwitcherLayout::Dock)
+                    rc = GetDockTileRect(g_nLVHotItem);
+                else
+                    ListView_GetItemRect(g_hListView, g_nLVHotItem, &rc, LVIR_BOUNDS);
                 InvalidateRect(g_hListView, &rc, FALSE);
             }
             if (g_Settings.Layout == SwitcherLayout::Dock && g_hAltTabWnd)
@@ -2216,8 +2403,12 @@ LRESULT ATW_OnNotify(HWND /*hwnd*/, int /*idFrom*/, NMHDR* pnmhdr) {
 #endif // _DEBUG
 
             // Show the tooltip just below the item
-            RECT itemRect;
-            if (ListView_GetItemRect(g_hListView, g_MouseHoverIndex, &itemRect, LVIR_BOUNDS)) {
+            RECT itemRect{};
+            const bool haveItemRect =
+                g_Settings.Layout == SwitcherLayout::Dock
+                    ? (itemRect = GetDockTileRect(g_MouseHoverIndex), true)
+                    : ListView_GetItemRect(g_hListView, g_MouseHoverIndex, &itemRect, LVIR_BOUNDS);
+            if (haveItemRect) {
                 pt.x = ptClientPos.x;
                 pt.y = itemRect.bottom + 1;
                 ClientToScreen(g_hListView, &pt);
@@ -2230,6 +2421,26 @@ LRESULT ATW_OnNotify(HWND /*hwnd*/, int /*idFrom*/, NMHDR* pnmhdr) {
 
     // Check if the single-click event is from your ListView control
     if (pnmhdr->hwndFrom == g_hListView && pnmhdr->code == NM_CLICK) {
+        if (g_Settings.Layout == SwitcherLayout::Dock) {
+            POINT point{};
+            GetCursorPos(&point);
+            ScreenToClient(g_hListView, &point);
+            const int clickedItem = DockHitTest(point);
+            if (clickedItem < 0)
+                return TRUE;
+            g_nLVHotItem = clickedItem;
+            g_rcBtnClose = g_Settings.ShowDeleteButton
+                               ? g_SwitcherRenderer->DockCloseButtonRect(GetDockTileRect(clickedItem))
+                               : RECT{};
+            g_IsMouseOverCloseButton = PtInRect(&g_rcBtnClose, point);
+            if (g_IsMouseOverCloseButton)
+                ATCloseWindow(clickedItem);
+            else {
+                ATWListViewSelectItem(clickedItem);
+                DestroyAltTabWindow(true);
+            }
+            return TRUE;
+        }
         // First check if the mouse is over on close button area
         if (g_IsMouseOverCloseButton) {
             // Close the window of the item under mouse cursor
@@ -2274,7 +2485,7 @@ INT_PTR CALLBACK ATAboutDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM l
         SetWindowLong(hDlg, GWL_EXSTYLE, GetWindowLong(hDlg, GWL_EXSTYLE) | WS_EX_APPWINDOW);
 
         std::wstring productInfo =
-            std::format(L"<a href=\"{}\">{}</a> v{}", AT_PRODUCT_PAGE, AT_PRODUCT_NAMEW, AT_VERSION_TEXTW);
+            std::format(L"<a href=\"{}\">{}</a> v{}", AT_PRODUCT_PAGE, AT_PRODUCT_NAMEW, AT_PRODUCT_VERSIONW);
         std::wstring copyright =
             std::format(L"Copyright � {} <a href=\"{}\">{}</a>", AT_PRODUCT_YEARW, AT_PRODUCT_PAGE, AT_AUTHOR_NAME);
 

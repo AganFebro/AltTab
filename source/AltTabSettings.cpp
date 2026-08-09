@@ -74,7 +74,6 @@ namespace {
     const wchar_t* SHOW_HIGHLIGHT_RECT = L"ShowHighlightRect";
     const wchar_t* SHOW_DELETE_BUTTON = L"ShowDeleteButton";
 
-    const wchar_t* CHECK_FOR_UPDATES = L"CheckForUpdates";
     const wchar_t* SYSTEM_TRAY_ICON_ENABLED = L"SystemTrayIconEnabled";
     const wchar_t* ALTTAB_ENABLED = L"AltTabEnabled";
     const wchar_t* ALTBACKTICK_ENABLED = L"AltBacktickEnabled";
@@ -209,7 +208,6 @@ void AltTabSettings::Reset() {
     FuzzyMatchPercent = DEFAULT_FUZZYMATCHPERCENT;
     Transparency = DEFAULT_TRANSPARENCY;
     SimilarProcessGroups = DEFAULT_SIMILARPROCESSGROUPS;
-    CheckForUpdatesOpt = DEFAULT_CHECKFORUPDATES;
     PromptTerminateAll = DEFAULT_PROMPTTERMINATEALL;
     DisableAltTab = false;
     ShowSearchString = DEFAULT_SHOW_SEARCH_STRING;
@@ -256,14 +254,6 @@ void AltTabSettings::Load() {
  */
 void AltTabSettings::Save() {
     ATSaveSettings();
-}
-
-int AltTabSettings::GetCheckForUpdatesIndex() const {
-    auto it = std::find(CheckForUpdatesOptions.begin(), CheckForUpdatesOptions.end(), this->CheckForUpdatesOpt);
-    if (it == CheckForUpdatesOptions.end()) {
-        return 0;
-    }
-    return (int)std::distance(CheckForUpdatesOptions.begin(), it);
 }
 
 /**
@@ -314,7 +304,6 @@ void AddTooltips(HWND hDlg) {
     ADD_TOOLTIP(IDC_CHECK_MH_SHOW_PROCESSINFO_TOOLTIP, TT_SHOW_PROCESSINFO_TOOLTIP);
     ADD_TOOLTIP(IDC_CHECK_MH_SHOW_HIGHLIGHT_RECT, TT_SHOW_MOUSEOVER_ITEM);
     ADD_TOOLTIP(IDC_CHECK_MH_SHOW_DELETE_BUTTON, TT_SHOW_DELETE_BUTTON);
-    ADD_TOOLTIP(IDC_CHECK_FOR_UPDATES, TT_CHECK_FOR_UPDATES);
     ADD_TOOLTIP(IDC_CHECK_PROCESS_EXCLUSIONS, TT_CHECK_PROCESS_EXCLUSIONS);
     ADD_TOOLTIP(IDC_EDIT_PROCESS_EXCLUSIONS, TT_EDIT_PROCESS_EXCLUSIONS);
     ADD_TOOLTIP(IDC_BUTTON_APPLY, TT_APPLY_SETTINGS);
@@ -710,7 +699,7 @@ void ATSettingsToFile(const std::wstring& iniFile) {
     WriteSetting(iniFile, GENERAL, DOCK_SCALE, std::wstring(DockScaleName(g_Settings.DockSize)));
     WriteSetting(iniFile, GENERAL, SHOW_SEARCH_STRING, g_Settings.ShowSearchString);
     WriteSetting(iniFile, GENERAL, SHOW_PROCESS_NAME, g_Settings.ShowProcessName);
-    WriteSetting(iniFile, GENERAL, CHECK_FOR_UPDATES, g_Settings.CheckForUpdatesOpt);
+    WritePrivateProfileStringW(GENERAL, L"CheckForUpdates", nullptr, iniFile.c_str());
     WriteSetting(iniFile, GENERAL, SYSTEM_TRAY_ICON_ENABLED, g_Settings.SystemTrayIconEnabled);
     WriteSetting(iniFile, MOUSE_HOVER, SHOW_PROCESS_INFO_TOOLTIP, g_Settings.ShowProcessInfoTooltip);
     WriteSetting(iniFile, MOUSE_HOVER, SHOW_HIGHLIGHT_RECT, g_Settings.ShowHighlightRect);
@@ -819,7 +808,6 @@ void ATLoadSettings() {
         legacyShowProcessName = value;
     }
     g_Settings.ShowProcessName = ResolveShowProcessNameSetting(showProcessName, legacyShowProcessName);
-    ReadSetting(iniFile, GENERAL, CHECK_FOR_UPDATES, DEFAULT_CHECKFORUPDATES, g_Settings.CheckForUpdatesOpt);
     ReadSetting(
         iniFile, GENERAL, SYSTEM_TRAY_ICON_ENABLED, DEFAULT_SYSTEM_TRAY_ICON_ENABLED, g_Settings.SystemTrayIconEnabled);
     ReadSetting(
@@ -974,8 +962,6 @@ void ATReadSettingsFromUI(HWND hDlg, AltTabSettings& settings) {
     settings.ShowDeleteButton = IsDlgButtonChecked(hDlg, IDC_CHECK_MH_SHOW_DELETE_BUTTON) == BST_CHECKED;
     settings.ProcessExclusionsEnabled = IsDlgButtonChecked(hDlg, IDC_CHECK_PROCESS_EXCLUSIONS) == BST_CHECKED;
     settings.ProcessExclusions = GetDlgItemTextEx(hDlg, IDC_EDIT_PROCESS_EXCLUSIONS);
-    const int selectedIndex = ComboBox_GetCurSel(GetDlgItem(hDlg, IDC_CHECK_FOR_UPDATES));
-    settings.CheckForUpdatesOpt = AltTabSettings::CheckForUpdatesOptions[max(selectedIndex, 0)];
     const int appearanceIndex = ComboBox_GetCurSel(GetDlgItem(hDlg, IDC_COMBO_APPEARANCE));
     settings.Appearance = static_cast<AppearanceMode>(max(appearanceIndex, 0));
 }
@@ -1026,7 +1012,6 @@ void ATLogSettings(const AltTabSettings& settings) {
     AT_LOG_DEBUG("  SwitcherLayout            : [%ls]", SwitcherLayoutName(settings.Layout).data());
     AT_LOG_DEBUG("  DockPosition              : [%ls]", DockPositionName(settings.DockPlacement).data());
     AT_LOG_DEBUG("  DockScale                 : [%ls]", DockScaleName(settings.DockSize).data());
-    AT_LOG_DEBUG("  CheckForUpdatesOpt        : [%s]", WStrToUTF8(settings.CheckForUpdatesOpt).c_str());
     AT_LOG_DEBUG("  PromptTerminateAll        : [%s]", BOOL_TO_CSTR(settings.PromptTerminateAll));
     AT_LOG_DEBUG("  ShowSearchString          : [%s]", BOOL_TO_CSTR(settings.ShowSearchString));
     AT_LOG_DEBUG("  ShowProcessName           : [%s]", BOOL_TO_CSTR(settings.ShowProcessName));
@@ -1065,8 +1050,7 @@ bool AreSettingsModified(HWND hDlg) {
         || settings.HeightPercentage != g_Settings.HeightPercentage
         || !SameSwitcherMonitorSetting(settings.SwitcherMonitor, g_Settings.SwitcherMonitor)
         || settings.Layout != g_Settings.Layout || settings.DockPlacement != g_Settings.DockPlacement
-        || settings.DockSize != g_Settings.DockSize || settings.CheckForUpdatesOpt != g_Settings.CheckForUpdatesOpt
-        || settings.PromptTerminateAll != g_Settings.PromptTerminateAll
+        || settings.DockSize != g_Settings.DockSize || settings.PromptTerminateAll != g_Settings.PromptTerminateAll
         || settings.ShowSearchString != g_Settings.ShowSearchString
         || settings.ShowProcessName != g_Settings.ShowProcessName
         || settings.HKAltTabEnabled != g_Settings.HKAltTabEnabled
@@ -1083,11 +1067,6 @@ bool AreSettingsModified(HWND hDlg) {
 
     return modified;
 }
-
-/**
- * \brief Available options of CheckForUpdates
- */
-StringList AltTabSettings::CheckForUpdatesOptions = { L"Startup", L"Daily", L"Weekly", L"Never" };
 
 /**
  * \brief Check if the given settings are valid.
@@ -1246,13 +1225,6 @@ void ATSettingsInitDialog(HWND hDlg, const AltTabSettings& settings) {
         hDlg, IDC_SPIN_WINDOW_HEIGHT_PERCENTAGE, UDM_SETPOS, 0, MAKELPARAM(settings.HeightPercentage, 0));
 
     SetDlgItemText(hDlg, IDC_EDIT_PROCESS_EXCLUSIONS, settings.ProcessExclusions.c_str());
-
-    HWND hComboBox = GetDlgItem(hDlg, IDC_CHECK_FOR_UPDATES);
-    ComboBox_ResetContent(hComboBox);
-    for (auto& opt : AltTabSettings::CheckForUpdatesOptions) {
-        ComboBox_AddString(hComboBox, opt.c_str());
-    }
-    ComboBox_SetCurSel(hComboBox, settings.GetCheckForUpdatesIndex());
 
     HWND hAppearance = GetDlgItem(hDlg, IDC_COMBO_APPEARANCE);
     ComboBox_ResetContent(hAppearance);

@@ -10,10 +10,8 @@
 
 using ProcessGroupsList = std::vector<std::unordered_set<std::wstring>>;
 using ProcessExclusionList = std::vector<std::wstring>;
-using StringList = std::vector<std::wstring>;
 
 #define SETTINGS_INI_FILENAME L"AltTabSettings.ini"
-#define CHECK_FOR_UPDATES_FILENAME L"CheckForUpdates.txt"
 
 // ----------------------------------------------------------------------------
 // Default settings
@@ -51,7 +49,6 @@ using StringList = std::vector<std::wstring>;
 #define DEFAULT_SIMILARPROCESSGROUPS                                                                                   \
     L"notepad.exe/notepad++.exe|iexplore.exe/msedge.exe/chrome.exe/firefox.exe|explorer.exe/xplorer2_lite.exe/"        \
     L"xplorer2.exe/xplorer2_64.exe|cmd.exe/WindowsTerminal.exe/conemu.exe/conemu64.exe"
-#define DEFAULT_CHECKFORUPDATES L"Startup"
 #define DEFAULT_PROMPTTERMINATEALL true
 #define DEFAULT_SHOW_SEARCH_STRING true
 #define DEFAULT_SHOW_PROCESSNAME true
@@ -118,7 +115,6 @@ struct AltTabSettings {
     int Transparency;                    // Window transparency
     std::wstring SimilarProcessGroups;   // Similar process groups
     ProcessGroupsList ProcessGroupsList; // Process groups, will be constructed at runtime from SimilarProcessGroups
-    std::wstring CheckForUpdatesOpt;     // Check for updates
     bool PromptTerminateAll;             // Ask before terminating all processes
     bool ShowSearchString;               // Show search string
     bool ShowProcessName;                // Show process name as the secondary row text
@@ -149,10 +145,7 @@ struct AltTabSettings {
 
     void Save();
 
-    int GetCheckForUpdatesIndex() const;
     std::pair<std::wstring, std::wstring> IsValid(bool& valid);
-
-    static StringList CheckForUpdatesOptions;
 };
 
 INT_PTR CALLBACK ATSettingsDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);

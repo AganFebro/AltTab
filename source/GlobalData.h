@@ -14,7 +14,6 @@
 
 #define TIMER_CHECK_ALT_KEYUP       1
 #define TIMER_WINDOW_COUNT          2
-#define TIMER_CHECK_FOR_UPDATES     3
 #define TIMER_CUSTOM_TOOLTIP        4
 
 

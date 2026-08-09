@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.29)
 
-project(AltTab VERSION 2026.2.0.0 LANGUAGES CXX)
+project(AltTab VERSION 1.1.0.0 LANGUAGES CXX)
 
 cmake_policy(SET CMP0091 NEW)
 set(CMAKE_CXX_STANDARD 20)
@@ -23,6 +23,7 @@ option(ALTTAB_BUILD_TESTER "Build the optional AltTabTester executable" OFF)
 
 set(ALTTAB_GENERATED_INCLUDE_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
 set(ALTTAB_GENERATED_VERSION_HEADER "${ALTTAB_GENERATED_INCLUDE_DIR}/version.h")
+string(TIMESTAMP ALTTAB_COPYRIGHT_YEAR "%Y")
 configure_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/version.h.in"
     "${ALTTAB_GENERATED_VERSION_HEADER}"
@@ -38,7 +39,6 @@ set(ALTTAB_COMMON_SOURCES
     "${ALTTAB_SOURCE_DIR}/AltTabMenu.cpp"
     "${ALTTAB_SOURCE_DIR}/AltTabWindow.cpp"
     "${ALTTAB_SOURCE_DIR}/AltTabWindowRenderer.cpp"
-    "${ALTTAB_SOURCE_DIR}/CheckForUpdates.cpp"
     "${ALTTAB_SOURCE_DIR}/fuzzywuzzy.cpp"
     "${ALTTAB_SOURCE_DIR}/GlobalData.cpp"
     "${ALTTAB_SOURCE_DIR}/Logger.cpp"
@@ -53,7 +53,6 @@ set(ALTTAB_COMMON_HEADERS
     "${ALTTAB_SOURCE_DIR}/AltTabMenu.h"
     "${ALTTAB_SOURCE_DIR}/AltTabWindow.h"
     "${ALTTAB_SOURCE_DIR}/AltTabWindowRenderer.h"
-    "${ALTTAB_SOURCE_DIR}/CheckForUpdates.h"
     "${ALTTAB_SOURCE_DIR}/fuzzywuzzy.h"
     "${ALTTAB_SOURCE_DIR}/GlobalData.h"
     "${ALTTAB_SOURCE_DIR}/Logger.h"
@@ -80,7 +79,6 @@ set(ALTTAB_WINDOWS_LIBRARIES
     comsuppw
     comsupp
     Uxtheme
-    wininet
     ole32
     oleaut32
     advapi32

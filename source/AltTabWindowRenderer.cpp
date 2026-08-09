@@ -180,17 +180,12 @@ void SwitcherRenderer::PaintPanel(HWND, HDC hdc, const RECT& client, bool showSe
     DeleteObject(pen);
 }
 
-RECT SwitcherRenderer::DockCloseButtonRect(HWND listView, int itemIndex) const {
-    RECT icon{};
-    if (!listView || itemIndex < 0 || !ListView_GetItemRect(listView, itemIndex, &icon, LVIR_ICON))
-        return {};
-    const int tileLeft = (icon.left + icon.right - theme_.metrics.dockTileSize) / 2;
-    const int tileTop = (theme_.metrics.dockRailHeight - theme_.metrics.dockTileSize) / 2;
+RECT SwitcherRenderer::DockCloseButtonRect(const RECT& tile) const {
     return {
-        tileLeft + theme_.metrics.dockTileSize - theme_.metrics.dockCloseButtonSize,
-        tileTop,
-        tileLeft + theme_.metrics.dockTileSize,
-        tileTop + theme_.metrics.dockCloseButtonSize,
+        tile.right - theme_.metrics.dockCloseButtonSize,
+        tile.top,
+        tile.right,
+        tile.top + theme_.metrics.dockCloseButtonSize,
     };
 }
 
@@ -198,6 +193,7 @@ bool SwitcherRenderer::DrawDockItem(
     HWND listView,
     HDC hdc,
     int itemIndex,
+    const RECT& tile,
     HIMAGELIST icons,
     const AltTabSettings& settings,
     int hotItem,
@@ -212,15 +208,6 @@ bool SwitcherRenderer::DrawDockItem(
     if (!window)
         return false;
 
-    RECT icon{};
-    if (!ListView_GetItemRect(listView, itemIndex, &icon, LVIR_ICON))
-        return false;
-    RECT tile{
-        (icon.left + icon.right - theme_.metrics.dockTileSize) / 2,
-        (theme_.metrics.dockRailHeight - theme_.metrics.dockTileSize) / 2,
-        (icon.left + icon.right + theme_.metrics.dockTileSize) / 2,
-        (theme_.metrics.dockRailHeight + theme_.metrics.dockTileSize) / 2,
-    };
     const bool selected = (ListView_GetItemState(listView, itemIndex, LVIS_SELECTED) & LVIS_SELECTED) != 0;
     const bool hot = itemIndex == hotItem;
     if (window->IsBeingClosed)
@@ -261,7 +248,7 @@ bool SwitcherRenderer::DrawDockItem(
     }
 
     if (settings.ShowDeleteButton && hot) {
-        closeHitRect = DockCloseButtonRect(listView, itemIndex);
+        closeHitRect = DockCloseButtonRect(tile);
         RECT closeSurface = closeHitRect;
         InflateRect(
             &closeSurface, -MulDiv(2, static_cast<int>(theme_.dpi), 96), -MulDiv(2, static_cast<int>(theme_.dpi), 96));

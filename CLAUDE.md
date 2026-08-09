@@ -54,7 +54,6 @@ Single-process GUI app. Startup flow (`source/AltTab.cpp`): initialize global st
 - **`GlobalData.cpp/h`** - Global settings instance (`g_Settings`) and access patterns.
 - **`fuzzywuzzy.cpp/h`** - Fuzzy string matching for window filtering.
 - **`Utils.cpp/h`** - Win32 process, window, and elevation utilities.
-- **`CheckForUpdates.cpp/h`** - Version update checks.
 - **`Logger.cpp/h`** - Optional log4cpp wrapper using `LOG(INFO) << ...`.
 - **`AltTab.rc` / `resource.h`** - Dialogs, strings, icons, and version resources.
 

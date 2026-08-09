@@ -38,8 +38,6 @@ to accommodate all the tasks then resize the window to WindowHeightMax
 according scroll bar presence.
 )";
 
-const wchar_t* TT_CHECK_FOR_UPDATES            = LR"(How frequently check for updates)";
-
 const wchar_t* TT_PROMPT_TERMINATE_ALL         = LR"(Prompts for confirmation before terminating a window/process)";
 
 const wchar_t* TT_SHOW_SS_CUE_BANNER_TEXT      = LR"(Default banner text displayed in search string text control when it is empty)";
